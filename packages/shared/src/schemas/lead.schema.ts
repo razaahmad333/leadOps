@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { LeadStatus } from '../enums.js';
+import { LeadStatus } from '../enums';
 
 export const CreateLeadSchema = z.object({
   name: z.string().min(1, 'Name is required').max(200),

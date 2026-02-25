@@ -1,7 +1,7 @@
 import { Processor, WorkerHost, OnWorkerEvent } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
-import { PING_QUEUE } from './queue.module';
+import { PING_QUEUE } from './queue.constants';
 
 export interface PingJobData {
   message: string;

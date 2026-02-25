@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { LeadStatus } from '../enums.js';
+import { LeadStatus } from '../enums';
 export declare const CreateLeadSchema: z.ZodObject<{
     name: z.ZodString;
     phone: z.ZodOptional<z.ZodString>;

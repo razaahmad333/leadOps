@@ -18,6 +18,8 @@
   },
   "dependencies": {
     "@fastify/cors": "^9.0.0",
+    "@fastify/static": "^9.0.0",
+    "@fastify/view": "^11.1.1",
     "@leadops/shared": "workspace:*",
     "@nestjs/bullmq": "^11.0.4",
     "@nestjs/common": "^11.0.0",
@@ -38,9 +40,8 @@
   },
   "devDependencies": {
     "@nestjs/cli": "^10.4.5",
-    "@nestjs/schematics": "^10.1.4",
-    "@nestjs/testing": "^11.0.0",
     "@nestjs/schematics": "^11.0.0",
+    "@nestjs/testing": "^11.0.0",
     "@types/bcryptjs": "^2.4.6",
     "@types/jest": "^29.5.13",
     "@types/node": "^22.0.0",

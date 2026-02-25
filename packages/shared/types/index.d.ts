@@ -1,7 +1,4 @@
-// Enums
 export { LeadStatus, Role } from './enums';
-
-// Auth schemas & types
 export {
   LoginSchema,
   LoginResponseSchema,
@@ -10,8 +7,6 @@ export {
   type LoginResponse,
   type AuthUser,
 } from './schemas/auth.schema';
-
-// Lead schemas & types
 export {
   CreateLeadSchema,
   UpdateLeadStatusSchema,
@@ -20,17 +15,10 @@ export {
   type UpdateLeadStatusDto,
   type Lead,
 } from './schemas/lead.schema';
-
-// FollowUp schemas & types
 export {
   CreateFollowUpSchema,
   FollowUpSchema,
   type CreateFollowUpDto,
   type FollowUp,
 } from './schemas/followup.schema';
-
-// Dashboard schemas & types
-export {
-  DashboardStatsSchema,
-  type DashboardStats,
-} from './schemas/dashboard.schema';
+export { DashboardStatsSchema, type DashboardStats } from './schemas/dashboard.schema';

@@ -1,8 +1,8 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
-import { PING_QUEUE } from './queue.module';
 import { PingJobData } from './ping.processor';
+import { PING_QUEUE } from './queue.constants';
 
 @Injectable()
 export class QueueService implements OnModuleInit {

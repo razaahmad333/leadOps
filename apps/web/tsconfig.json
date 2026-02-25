@@ -14,10 +14,7 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "paths": {
-      "@leadops/shared": ["../../packages/shared/src/index.ts"]
-    }
+    "noUnusedParameters": true
   },
   "include": ["src", "vite.config.ts"],
   "exclude": ["node_modules", "dist"]

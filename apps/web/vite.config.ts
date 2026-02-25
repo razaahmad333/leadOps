@@ -8,11 +8,13 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export default defineConfig({
   plugins: [react()],
   resolve: {
+    extensions: ['.ts', '.tsx', '.mjs', '.js', '.mts', '.jsx', '.json'],
     alias: {
       '@leadops/shared': path.resolve(__dirname, '../../packages/shared/src/index.ts'),
     },
   },
   server: {
+    host: '127.0.0.1',
     port: 5173,
     proxy: {
       '/v1': {

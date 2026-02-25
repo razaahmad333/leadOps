@@ -2,8 +2,7 @@ import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { PingProcessor } from './ping.processor';
 import { QueueService } from './queue.service';
-
-export const PING_QUEUE = 'ping-queue';
+import { PING_QUEUE } from './queue.constants';
 
 @Module({
   imports: [
