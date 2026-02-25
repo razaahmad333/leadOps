@@ -1,0 +1,104 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────
+// Tenant
+// ─────────────────────────────────────────────
+
+model Tenant {
+  id        String   @id @default(uuid())
+  slug      String   @unique
+  name      String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  users     User[]
+  leads     Lead[]
+  followUps FollowUp[]
+
+  @@map("tenants")
+}
+
+// ─────────────────────────────────────────────
+// Users & Auth
+// ─────────────────────────────────────────────
+
+enum Role {
+  OWNER
+  STAFF
+}
+
+model User {
+  id           String   @id @default(uuid())
+  tenantId     String   @map("tenant_id")
+  email        String
+  name         String
+  passwordHash String   @map("password_hash")
+  role         Role     @default(STAFF)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  followUps FollowUp[]
+
+  @@unique([tenantId, email])
+  @@map("users")
+}
+
+// ─────────────────────────────────────────────
+// Leads
+// ─────────────────────────────────────────────
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  QUALIFIED
+  PENDING
+  WON
+  LOST
+}
+
+model Lead {
+  id        String     @id @default(uuid())
+  tenantId  String     @map("tenant_id")
+  name      String
+  phone     String?
+  email     String?
+  source    String?
+  status    LeadStatus @default(NEW)
+  createdAt DateTime   @default(now()) @map("created_at")
+  updatedAt DateTime   @updatedAt @map("updated_at")
+
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  followUps FollowUp[]
+
+  @@map("leads")
+}
+
+// ─────────────────────────────────────────────
+// Follow-Ups
+// ─────────────────────────────────────────────
+
+model FollowUp {
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+  leadId      String   @map("lead_id")
+  assignedTo  String?  @map("assigned_to")
+  scheduledAt DateTime @map("scheduled_at")
+  note        String?
+  done        Boolean  @default(false)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  lead   Lead   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  user   User?  @relation(fields: [assignedTo], references: [id])
+
+  @@map("follow_ups")
+}

@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node:*)",
+      "WebSearch",
+      "Bash(pnpm:*)",
+      "Bash(docker:*)",
+      "WebFetch(domain:www.npmjs.com)"
+    ]
+  }
+}
