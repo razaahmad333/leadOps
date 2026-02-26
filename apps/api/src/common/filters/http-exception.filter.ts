@@ -1,16 +1,12 @@
 import {
-  ExceptionFilter,
-  Catch,
   ArgumentsHost,
+  Catch,
+  ExceptionFilter,
   HttpException,
   HttpStatus,
   Logger,
 } from '@nestjs/common';
-// Use 'any' types for Fastify request/response to avoid direct fastify dependency
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type FastifyReply = any;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type FastifyRequest = any;
+import { getTenantContext } from '../../tenant/tenant.store';
 
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
@@ -18,12 +14,18 @@ export class HttpExceptionFilter implements ExceptionFilter {
 
   catch(exception: unknown, host: ArgumentsHost): void {
     const ctx = host.switchToHttp();
-    const reply = ctx.getResponse<FastifyReply>();
-    const request = ctx.getRequest<FastifyRequest>();
+    const reply = ctx.getResponse<{ status: (code: number) => { send: (body: unknown) => void } }>();
+    const request = ctx.getRequest<{
+      url: string;
+      method: string;
+      requestId?: string;
+    }>();
+
+    const tenantContext = getTenantContext(false);
 
     let status = HttpStatus.INTERNAL_SERVER_ERROR;
     let message: string | string[] = 'Internal server error';
-    let errors: Record<string, string> | undefined;
+    let details: unknown;
 
     if (exception instanceof HttpException) {
       status = exception.getStatus();
@@ -31,23 +33,29 @@ export class HttpExceptionFilter implements ExceptionFilter {
 
       if (typeof response === 'string') {
         message = response;
-      } else if (typeof response === 'object' && response !== null) {
-        const r = response as Record<string, unknown>;
-        message = (r['message'] as string | string[]) ?? exception.message;
-        errors = r['errors'] as Record<string, string> | undefined;
+      } else if (response && typeof response === 'object') {
+        const payload = response as Record<string, unknown>;
+        message = (payload.message as string | string[]) ?? exception.message;
+        details = payload.errors;
       }
     } else if (exception instanceof Error) {
-      this.logger.error(`Unhandled exception: ${exception.message}`, exception.stack);
+      this.logger.error(exception.message, exception.stack);
     }
 
-    const body: Record<string, unknown> = {
-      statusCode: status,
-      message,
-      timestamp: new Date().toISOString(),
-      path: request.url,
+    const body = {
+      error: {
+        status,
+        message,
+        details,
+      },
+      meta: {
+        timestamp: new Date().toISOString(),
+        path: request.url,
+        method: request.method,
+        requestId: request.requestId ?? tenantContext?.requestId,
+        tenantId: tenantContext?.tenantId,
+      },
     };
-
-    if (errors) body['errors'] = errors;
 
     void reply.status(status).send(body);
   }

@@ -1,10 +1,10 @@
 import { Controller, Get, UseGuards } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
-import { DashboardService } from './dashboard.service';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { DashboardStats, Role } from '@leadops/shared';
+import { Roles } from '../common/decorators/roles.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
-import { Roles } from '../common/decorators/roles.decorator';
-import { Role, type DashboardStats } from '@leadops/shared';
+import { DashboardService } from './dashboard.service';
 
 @ApiTags('dashboard')
 @ApiBearerAuth()
@@ -15,7 +15,7 @@ export class DashboardController {
 
   @Get('stats')
   @Roles(Role.OWNER)
-  @ApiOperation({ summary: 'Get dashboard statistics (OWNER only)' })
+  @ApiOperation({ summary: 'Get owner dashboard counters' })
   getStats(): Promise<DashboardStats> {
     return this.dashboardService.getStats();
   }

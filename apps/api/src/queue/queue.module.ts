@@ -1,14 +1,14 @@
 import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
-import { PingProcessor } from './ping.processor';
+import { REMINDER_QUEUE, REPORT_QUEUE } from '@leadops/shared';
 import { QueueService } from './queue.service';
-import { PING_QUEUE } from './queue.constants';
 
 @Module({
   imports: [
-    BullModule.registerQueue({ name: PING_QUEUE }),
+    BullModule.registerQueue({ name: REMINDER_QUEUE }),
+    BullModule.registerQueue({ name: REPORT_QUEUE }),
   ],
-  providers: [PingProcessor, QueueService],
+  providers: [QueueService],
   exports: [QueueService],
 })
 export class QueueModule {}

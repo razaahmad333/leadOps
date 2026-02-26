@@ -7,6 +7,7 @@ dist/
 build/
 .next/
 out/
+.turbo/
 
 # TypeScript
 *.js.map
@@ -33,9 +34,6 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
-
-# Prisma
-apps/api/prisma/migrations/
 
 # Coverage
 coverage/

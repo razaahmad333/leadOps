@@ -4,12 +4,12 @@
   "private": true,
   "description": "HikmahOne LeadOps – production-grade CRM monorepo",
   "scripts": {
-    "dev": "concurrently -n api,web -c blue,green \"pnpm --filter @leadops/api dev\" \"pnpm --filter @leadops/web dev\"",
-    "build": "pnpm -r build",
-    "lint": "pnpm -r lint",
+    "dev": "pnpm --filter @leadops/shared build && turbo run dev --parallel --filter=@leadops/api --filter=@leadops/worker --filter=@leadops/web",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
     "format": "prettier --write \"**/*.{ts,tsx,js,json,md}\" --ignore-path .gitignore",
-    "typecheck": "pnpm -r typecheck",
-    "test": "pnpm -r test",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
     "db:generate": "pnpm --filter @leadops/api prisma:generate",
     "db:migrate": "pnpm --filter @leadops/api prisma:migrate",
     "db:seed": "pnpm --filter @leadops/api prisma:seed",
@@ -18,9 +18,9 @@
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^8.0.0",
     "@typescript-eslint/parser": "^8.0.0",
-    "concurrently": "^9.0.0",
     "eslint": "^9.0.0",
     "prettier": "^3.3.3",
+    "turbo": "^2.5.6",
     "typescript": "^5.5.4"
   },
   "engines": {

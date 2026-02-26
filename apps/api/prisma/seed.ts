@@ -1,99 +1,171 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, LeadStatus } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
 async function main(): Promise<void> {
-  console.log('🌱 Seeding database...');
+  // eslint-disable-next-line no-console
+  console.log('Seeding HikmahOne LeadOps...');
 
-  // ─────────────────────────────────────────
-  // Tenant
-  // ─────────────────────────────────────────
   const tenant = await prisma.tenant.upsert({
     where: { slug: 'local' },
-    update: {},
+    update: { name: 'HikmahOne Local Tenant' },
     create: {
       slug: 'local',
-      name: 'Local Development Tenant',
+      name: 'HikmahOne Local Tenant',
     },
   });
-  console.log(`✅ Tenant: ${tenant.id} (${tenant.slug})`);
 
-  // ─────────────────────────────────────────
-  // Users
-  // ─────────────────────────────────────────
-  const ownerHash = await bcrypt.hash('Password123!', 10);
+  await prisma.tenantConfig.upsert({
+    where: { tenantId: tenant.id },
+    update: {},
+    create: {
+      tenantId: tenant.id,
+      timezone: 'Asia/Jakarta',
+      businessStart: '09:00',
+      businessEnd: '18:00',
+      stages: ['New', 'Contacted', 'Qualified', 'Pending', 'Won', 'Lost'],
+      reminderRules: {
+        firstReminderMinutes: 30,
+        escalationMinutes: 120,
+      },
+      templates: [
+        {
+          key: 'initial_followup',
+          title: 'Initial Follow-up',
+          body: 'Assalamualaikum, just checking in regarding your request.',
+        },
+      ],
+      featureFlags: {
+        aiAssist: true,
+      },
+    },
+  });
+
+  const passwordHash = await bcrypt.hash('Password123!', 10);
+
   const owner = await prisma.user.upsert({
     where: { tenantId_email: { tenantId: tenant.id, email: 'owner@local.test' } },
-    update: {},
+    update: { name: 'HikmahOne Owner', passwordHash, role: 'OWNER' },
     create: {
       tenantId: tenant.id,
       email: 'owner@local.test',
-      name: 'Local Owner',
-      passwordHash: ownerHash,
+      name: 'HikmahOne Owner',
+      passwordHash,
       role: 'OWNER',
     },
   });
-  console.log(`✅ Owner: ${owner.email}`);
 
-  const staffHash = await bcrypt.hash('Password123!', 10);
   const staff = await prisma.user.upsert({
     where: { tenantId_email: { tenantId: tenant.id, email: 'staff@local.test' } },
-    update: {},
+    update: { name: 'HikmahOne Staff', passwordHash, role: 'STAFF' },
     create: {
       tenantId: tenant.id,
       email: 'staff@local.test',
-      name: 'Local Staff',
-      passwordHash: staffHash,
+      name: 'HikmahOne Staff',
+      passwordHash,
       role: 'STAFF',
     },
   });
-  console.log(`✅ Staff: ${staff.email}`);
 
-  // ─────────────────────────────────────────
-  // Sample Leads
-  // ─────────────────────────────────────────
-  const leadData = [
-    { name: 'Alice Johnson', email: 'alice@example.com', phone: '+1-555-0001', source: 'Website', status: 'NEW' as const },
-    { name: 'Bob Smith', email: 'bob@example.com', phone: '+1-555-0002', source: 'Referral', status: 'CONTACTED' as const },
-    { name: 'Carol Davis', email: 'carol@example.com', phone: null, source: 'LinkedIn', status: 'QUALIFIED' as const },
-  ];
+  await prisma.followUp.deleteMany({ where: { tenantId: tenant.id } });
+  await prisma.leadActivity.deleteMany({ where: { tenantId: tenant.id } });
+  await prisma.lead.deleteMany({ where: { tenantId: tenant.id } });
 
-  const leads = await Promise.all(
-    leadData.map((data) =>
-      prisma.lead.create({ data: { ...data, tenantId: tenant.id } }),
+  const now = new Date();
+  const inTwoHours = new Date(now.getTime() + 2 * 60 * 60 * 1000);
+  const inFiveHours = new Date(now.getTime() + 5 * 60 * 60 * 1000);
+
+  const leads = await Promise.all([
+    prisma.lead.create({
+      data: {
+        tenantId: tenant.id,
+        ownerId: staff.id,
+        name: 'Ahmad Rahman',
+        email: 'ahmad.rahman@example.com',
+        phone: '+1-555-1101',
+        source: 'Website Form',
+        status: LeadStatus.NEW,
+        nextFollowUpAt: inTwoHours,
+      },
+    }),
+    prisma.lead.create({
+      data: {
+        tenantId: tenant.id,
+        ownerId: staff.id,
+        name: 'Fatimah Noor',
+        email: 'fatimah.noor@example.com',
+        phone: '+1-555-1102',
+        source: 'Referral',
+        status: LeadStatus.PENDING,
+        nextFollowUpAt: inFiveHours,
+      },
+    }),
+    prisma.lead.create({
+      data: {
+        tenantId: tenant.id,
+        ownerId: owner.id,
+        name: 'Khalid Yusuf',
+        email: 'khalid.yusuf@example.com',
+        phone: '+1-555-1103',
+        source: 'Campaign',
+        status: LeadStatus.WON,
+        nextFollowUpAt: null,
+      },
+    }),
+  ]);
+
+  await Promise.all([
+    prisma.followUp.create({
+      data: {
+        tenantId: tenant.id,
+        leadId: leads[0].id,
+        assignedTo: staff.id,
+        scheduledAt: inTwoHours,
+        note: 'Discovery call',
+      },
+    }),
+    prisma.followUp.create({
+      data: {
+        tenantId: tenant.id,
+        leadId: leads[1].id,
+        assignedTo: staff.id,
+        scheduledAt: inFiveHours,
+        note: 'Send pricing options',
+      },
+    }),
+  ]);
+
+  await Promise.all(
+    leads.map((lead) =>
+      prisma.leadActivity.create({
+        data: {
+          tenantId: tenant.id,
+          leadId: lead.id,
+          actorId: owner.id,
+          type: 'lead.seeded',
+          message: 'Seed data created for local development',
+        },
+      }),
     ),
   );
-  console.log(`✅ Created ${leads.length} sample leads`);
 
-  // ─────────────────────────────────────────
-  // Follow-up due today
-  // ─────────────────────────────────────────
-  const today = new Date();
-  today.setHours(10, 0, 0, 0);
-
-  await prisma.followUp.create({
-    data: {
-      tenantId: tenant.id,
-      leadId: leads[0].id,
-      assignedTo: staff.id,
-      scheduledAt: today,
-      note: 'Initial discovery call',
-    },
-  });
-  console.log('✅ Created follow-up due today');
-
-  // Print tenant ID for use in SINGLE_TENANT_ID / VITE_TENANT_ID
-  console.log('\n─────────────────────────────────────');
-  console.log(`📋 Tenant UUID (copy to .env files):`);
-  console.log(`   SINGLE_TENANT_ID=${tenant.id}`);
-  console.log(`   VITE_TENANT_ID=${tenant.id}`);
-  console.log('─────────────────────────────────────\n');
+  // eslint-disable-next-line no-console
+  console.log('Seed complete. Use these local credentials:');
+  // eslint-disable-next-line no-console
+  console.log('OWNER: owner@local.test / Password123!');
+  // eslint-disable-next-line no-console
+  console.log('STAFF: staff@local.test / Password123!');
+  // eslint-disable-next-line no-console
+  console.log(`SINGLE_TENANT_ID=${tenant.id}`);
 }
 
 main()
-  .catch((e) => {
-    console.error('❌ Seed failed:', e);
+  .catch((error) => {
+    // eslint-disable-next-line no-console
+    console.error(error);
     process.exit(1);
   })
-  .finally(() => prisma.$disconnect());
+  .finally(async () => {
+    await prisma.$disconnect();
+  });

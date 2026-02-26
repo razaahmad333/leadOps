@@ -1,88 +1,110 @@
-import React, { useState, type FormEvent } from 'react';
+import React, { useEffect, useState, type FormEvent } from 'react';
+import { ArrowRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext.tsx';
-import { useToast } from '../context/ToastContext.tsx';
+import { toast } from 'sonner';
+import { useAuth } from '../context/AuthContext';
+import { Button } from '../components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
+import { Input } from '../components/ui/input';
+import { Label } from '../components/ui/label';
 
 export function LoginPage(): React.JSX.Element {
-  const { login, user } = useAuth();
-  const { showToast } = useToast();
+  const { user, login } = useAuth();
   const navigate = useNavigate();
 
   const [email, setEmail] = useState('owner@local.test');
   const [password, setPassword] = useState('Password123!');
-  const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
-  // Already logged in → redirect
-  if (user) {
-    const dest = user.role === 'OWNER' ? '/owner/dashboard' : '/staff/today';
-    void navigate(dest, { replace: true });
-    return <></>;
-  }
+  useEffect(() => {
+    if (!user) {
+      return;
+    }
 
-  const handleSubmit = async (e: FormEvent): Promise<void> => {
-    e.preventDefault();
-    setLoading(true);
+    void navigate(user.role === 'OWNER' ? '/owner/dashboard' : '/staff/today', {
+      replace: true,
+    });
+  }, [navigate, user]);
+
+  const onSubmit = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
+    event.preventDefault();
+    setSubmitting(true);
+
     try {
       await login(email, password);
-      // After login, user state will be set and re-render redirects
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Login failed', 'error');
+      toast.success('Welcome back to HikmahOne');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Unable to sign in');
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50">
-      <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow-md">
-        <div className="mb-8 text-center">
-          <h1 className="text-2xl font-bold text-brand-700">HikmahOne LeadOps</h1>
-          <p className="mt-1 text-sm text-gray-500">Sign in to your account</p>
+    <div className="flex min-h-screen items-center justify-center px-4 py-10">
+      <div className="grid w-full max-w-5xl gap-8 lg:grid-cols-[1.1fr_0.9fr]">
+        <div className="hidden rounded-3xl border bg-card/70 p-10 shadow-lg backdrop-blur lg:block">
+          <p className="text-sm uppercase tracking-[0.24em] text-muted-foreground">HikmahOne</p>
+          <h1 className="mt-4 text-4xl font-bold leading-tight">
+            LeadOps that keeps every follow-up intentional.
+          </h1>
+          <p className="mt-5 max-w-lg text-base text-muted-foreground">
+            Manage your pipeline with disciplined reminders, tenant-safe workflows, and a calm enterprise control room.
+          </p>
+          <div className="mt-8 grid grid-cols-2 gap-4 text-sm">
+            <div className="rounded-xl border bg-background/60 p-4">
+              <p className="text-muted-foreground">Queue health</p>
+              <p className="mt-1 text-2xl font-semibold">BullMQ + Redis</p>
+            </div>
+            <div className="rounded-xl border bg-background/60 p-4">
+              <p className="text-muted-foreground">Tenant mode</p>
+              <p className="mt-1 text-2xl font-semibold">SaaS + Single</p>
+            </div>
+          </div>
         </div>
 
-        <form onSubmit={(e) => void handleSubmit(e)} className="space-y-5">
-          <div>
-            <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-              Email address
-            </label>
-            <input
-              id="email"
-              type="email"
-              autoComplete="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm shadow-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-            />
-          </div>
+        <Card className="rounded-3xl border bg-card/95 shadow-xl">
+          <CardHeader>
+            <CardTitle className="text-2xl">Sign in</CardTitle>
+            <CardDescription>Access HikmahOne LeadOps workspace</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form className="space-y-5" onSubmit={(event) => void onSubmit(event)}>
+              <div className="space-y-2">
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  autoComplete="email"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  required
+                />
+              </div>
 
-          <div>
-            <label htmlFor="password" className="block text-sm font-medium text-gray-700">
-              Password
-            </label>
-            <input
-              id="password"
-              type="password"
-              autoComplete="current-password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm shadow-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-            />
-          </div>
+              <div className="space-y-2">
+                <Label htmlFor="password">Password</Label>
+                <Input
+                  id="password"
+                  type="password"
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  required
+                />
+              </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {loading ? 'Signing in…' : 'Sign in'}
-          </button>
-        </form>
+              <Button type="submit" className="w-full" disabled={submitting}>
+                {submitting ? 'Signing in...' : 'Sign in'}
+                <ArrowRight className="h-4 w-4" />
+              </Button>
+            </form>
 
-        <p className="mt-6 text-center text-xs text-gray-400">
-          Local dev: owner@local.test / Password123!
-        </p>
+            <p className="mt-5 text-xs text-muted-foreground">
+              Local dev users: `owner@local.test` / `staff@local.test` with password `Password123!`
+            </p>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

@@ -1,9 +1,52 @@
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Source+Sans+3:wght@400;500;600;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
+  :root {
+    --background: 210 20% 98%;
+    --foreground: 220 18% 16%;
+    --card: 0 0% 100%;
+    --card-foreground: 220 18% 16%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 18% 16%;
+    --primary: 198 53% 43%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 22% 94%;
+    --secondary-foreground: 222 21% 22%;
+    --muted: 210 22% 94%;
+    --muted-foreground: 220 12% 43%;
+    --accent: 174 36% 90%;
+    --accent-foreground: 184 56% 24%;
+    --destructive: 0 76% 54%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 210 22% 88%;
+    --input: 210 22% 88%;
+    --ring: 198 53% 43%;
+    --radius: 0.75rem;
+  }
+
+  * {
+    @apply border-border;
+  }
+
   body {
-    @apply bg-gray-50 text-gray-900 antialiased;
+    @apply bg-background text-foreground antialiased;
+    font-family: 'Source Sans 3', system-ui, -apple-system, sans-serif;
+    background-image: radial-gradient(circle at 0% 0%, rgba(121, 185, 198, 0.18), transparent 45%),
+      radial-gradient(circle at 100% 0%, rgba(133, 182, 168, 0.12), transparent 35%);
+    min-height: 100vh;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-family: 'Manrope', 'Source Sans 3', sans-serif;
+    letter-spacing: -0.01em;
   }
 }

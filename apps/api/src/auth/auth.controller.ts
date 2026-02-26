@@ -1,28 +1,22 @@
-import { Controller, Post, Body, HttpCode, HttpStatus, UsePipes } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
-import { AuthService } from './auth.service';
-import { LoginSchema, LoginDto, LoginResponse } from '@leadops/shared';
+import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
+import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { LoginDto, LoginSchema } from '@leadops/shared';
+import { Public } from '../common/decorators/public.decorator';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
+import { AuthService } from './auth.service';
 
 @ApiTags('auth')
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
+  @Public()
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  @UsePipes(new ZodValidationPipe(LoginSchema))
-  @ApiOperation({ summary: 'Login and receive JWT access token' })
+  @ApiOperation({ summary: 'Login and receive a JWT' })
   @ApiResponse({ status: 200, description: 'Login successful' })
   @ApiResponse({ status: 401, description: 'Invalid credentials' })
-  login(@Body() dto: LoginDto): Promise<LoginResponse> {
+  login(@Body(new ZodValidationPipe(LoginSchema)) dto: LoginDto) {
     return this.authService.login(dto);
-  }
-
-  @Post('refresh')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Refresh access token (stub — not yet implemented)' })
-  refresh(): { message: string } {
-    return { message: 'Refresh token flow not yet implemented' };
   }
 }

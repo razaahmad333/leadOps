@@ -1,12 +1,28 @@
 import { Controller, Get } from '@nestjs/common';
-import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Public } from '../common/decorators/public.decorator';
+import { MetricsService } from '../common/metrics/metrics.service';
 
 @ApiTags('health')
-@Controller('health')
+@Controller()
 export class HealthController {
-  @Get()
-  @ApiOperation({ summary: 'Health check — no auth required' })
-  health(): { status: string; timestamp: string } {
-    return { status: 'ok', timestamp: new Date().toISOString() };
+  constructor(private readonly metrics: MetricsService) {}
+
+  @Public()
+  @Get('health')
+  @ApiOperation({ summary: 'Service health check' })
+  getHealth() {
+    return {
+      status: 'ok',
+      service: 'hikmahone-leadops-api',
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  @Public()
+  @Get('metrics')
+  @ApiOperation({ summary: 'Minimal metrics snapshot hook' })
+  getMetrics() {
+    return this.metrics.snapshot();
   }
 }

@@ -1,102 +1,75 @@
 # HikmahOne LeadOps
 
-Production-grade multi-tenant CRM monorepo for managing leads, follow-ups, and sales pipelines.
+Production-grade LeadOps platform for multi-tenant teams.
 
 ## Stack
+- Monorepo: `pnpm workspaces` + `Turborepo`
+- API: NestJS + Fastify + Swagger/OpenAPI
+- Worker: NestJS queue worker (BullMQ + Redis)
+- Web: React + Vite + Tailwind + shadcn-style components + lucide icons
+- Persistence: Prisma + PostgreSQL
 
-| Layer      | Technology                                       |
-|------------|--------------------------------------------------|
-| Backend    | NestJS 11 + Fastify + TypeScript                 |
-| Database   | PostgreSQL 16 via Prisma 6 (shared-schema MT)    |
-| Queue      | Redis 7 + BullMQ                                 |
-| Frontend   | React 18 + Vite + TypeScript + Tailwind CSS 3    |
-| Validation | Zod (shared between API + frontend)              |
-| Monorepo   | pnpm workspaces                                  |
+## Repository Structure
+- `apps/api`
+- `apps/worker`
+- `apps/web`
+- `packages/shared`
+- `infra/docker-compose.yml`
+- `docs/ARCHITECTURE.md`
+- `docs/FOUNDATION_RESEARCH.md`
 
-## Prerequisites
-
-- **Node.js** >= 20 (`node -v`)
-- **pnpm** >= 10 (`pnpm -v`)
-- **Docker** >= 24 + Docker Compose v2 (`docker compose version`)
-
-## Quick Start
-
+## Local Setup
 ```bash
-# 1. Install all dependencies
-pnpm install
-
-# 2. Start PostgreSQL + Redis
+# 1) Start infra
 docker compose -f infra/docker-compose.yml up -d
 
-# 3. Copy env files and fill in secrets
+# 2) Install dependencies
+pnpm install
+
+# 3) Copy env files
 cp apps/api/.env.example apps/api/.env
+cp apps/worker/.env.example apps/worker/.env
 cp apps/web/.env.example apps/web/.env
 
-# 4. Run database migration
+# 4) Generate Prisma client + migrate + seed
+pnpm db:generate
 pnpm db:migrate
-
-# 5. Seed local development data
 pnpm db:seed
-# The seed output will print the tenant UUID — copy it:
-#   SINGLE_TENANT_ID=<uuid>  → paste into apps/api/.env
-#   VITE_TENANT_ID=<uuid>    → paste into apps/web/.env
 
-# 6. Start all apps (API + Web concurrently)
+# 5) Set SINGLE_TENANT_ID in apps/api/.env from seed output
+
+# 6) Run everything (api + worker + web)
 pnpm dev
 ```
 
-## Apps
+## URLs
+- Web: `http://localhost:5173`
+- API: `http://localhost:3000`
+- Swagger: `http://localhost:3000/docs`
+- Health: `http://localhost:3000/health`
+- Metrics: `http://localhost:3000/metrics`
 
-| App              | URL                          | Description            |
-|------------------|------------------------------|------------------------|
-| `@leadops/api`   | http://localhost:3000        | NestJS REST API        |
-| `@leadops/web`   | http://localhost:5173        | React frontend         |
-| Swagger / OpenAPI | http://localhost:3000/docs  | Interactive API docs   |
-| Health check     | http://localhost:3000/health | No-auth health endpoint|
+## Local Credentials
+- Owner: `owner@local.test` / `Password123!`
+- Staff: `staff@local.test` / `Password123!`
 
-## Packages
+## Scripts
+- `pnpm dev`: run API + worker + web
+- `pnpm build`: build all packages via Turbo
+- `pnpm lint`: lint all packages
+- `pnpm typecheck`: typecheck all packages
+- `pnpm db:generate`: prisma generate (API)
+- `pnpm db:migrate`: prisma migrate dev (API)
+- `pnpm db:seed`: seed local data (API)
 
-| Package          | Description                                    |
-|------------------|------------------------------------------------|
-| `@leadops/shared` | Zod schemas + TypeScript types (API + web)   |
-| `@leadops/config` | ESLint + tsconfig presets                     |
+## Verification Checklist
+1. Login works for owner/staff users.
+2. Tenant context works (`DEPLOYMENT_MODE=multi` + `x-tenant-id` header, or single-tenant env).
+3. Create lead works and enforces `nextFollowUpAt`.
+4. Created lead appears in staff Today follow-ups.
+5. Owner dashboard counters load.
+6. Worker starts and processes demo summary/reminder jobs.
 
-## Local Dev Credentials
-
-| Role  | Email                | Password      |
-|-------|----------------------|---------------|
-| Owner | owner@local.test     | Password123!  |
-| Staff | staff@local.test     | Password123!  |
-
-## Root Scripts
-
-| Script            | Description                              |
-|-------------------|------------------------------------------|
-| `pnpm dev`        | Run API + web concurrently               |
-| `pnpm build`      | Build all packages                       |
-| `pnpm lint`       | Lint all packages                        |
-| `pnpm typecheck`  | Type-check all packages                  |
-| `pnpm test`       | Run tests                                |
-| `pnpm db:migrate` | Run Prisma migrations (dev)              |
-| `pnpm db:seed`    | Seed local development data              |
-| `pnpm db:studio`  | Open Prisma Studio (DB GUI)              |
-
-## Architecture
-
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for multi-tenancy design, adapter pattern, and deployment modes.
-
-## API Reference
-
-See Swagger UI at http://localhost:3000/docs after starting the API.
-
-### Quick curl test
-
-```bash
-# Health (no auth)
-curl http://localhost:3000/health
-
-# Login (add x-tenant-id header if DEPLOYMENT_MODE=multi)
-curl -X POST http://localhost:3000/v1/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email":"owner@local.test","password":"Password123!"}'
-```
+## Notes
+- WhatsApp integration is scaffolded only (non-goal for v1).
+- Settings page is read-only placeholder backed by tenant config store.

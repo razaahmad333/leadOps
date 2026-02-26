@@ -1,4 +1,5 @@
-import { Injectable, NestMiddleware, NotFoundException, Logger } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
+import { Injectable, Logger, NestMiddleware, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { tenantStorage } from './tenant.store';
 
@@ -8,77 +9,88 @@ export class TenantMiddleware implements NestMiddleware {
 
   constructor(private readonly prisma: PrismaService) {}
 
-  use(req: any, _res: any, next: () => void): void {
-    // Health check bypasses tenant resolution
-    if (req.url === '/health' || req.url === '/v1/health') {
-      next();
+  use(req: any, res: any, next: () => void): void {
+    const requestId = (req.headers['x-request-id'] as string | undefined) ?? randomUUID();
+
+    req.requestId = requestId;
+    if (typeof res.setHeader === 'function') {
+      res.setHeader('x-request-id', requestId);
+    }
+
+    if (this.isBypassPath(req.url)) {
+      tenantStorage.run({ tenantId: 'system', tenantSlug: 'system', requestId }, next);
       return;
     }
 
-    void this.resolve(req, next);
+    void this.resolveTenant(req, requestId, next);
   }
 
-  private async resolve(req: any, next: () => void): Promise<void> {
-    try {
-      const mode = process.env.DEPLOYMENT_MODE ?? 'single';
+  private isBypassPath(url: string): boolean {
+    return url.startsWith('/health') || url.startsWith('/metrics') || url.startsWith('/docs');
+  }
 
-      let tenantId: string | undefined;
-      let tenantSlug: string | undefined;
+  private async resolveTenant(req: any, requestId: string, next: () => void): Promise<void> {
+    const mode = process.env.DEPLOYMENT_MODE ?? 'single';
 
-      if (mode === 'single') {
-        // Single-tenant: always use SINGLE_TENANT_ID env var
-        const id = process.env.SINGLE_TENANT_ID;
-        if (!id) {
-          this.logger.warn('DEPLOYMENT_MODE=single but SINGLE_TENANT_ID is not set');
-          // Attempt to fall back to first tenant in DB (dev convenience)
-          const first = await this.prisma.tenant.findFirst();
-          if (!first) throw new NotFoundException('No tenant found in database');
-          tenantId = first.id;
-          tenantSlug = first.slug;
-        } else {
-          const tenant = await this.prisma.tenant.findUnique({ where: { id } });
-          if (!tenant) throw new NotFoundException(`Tenant with id ${id} not found`);
-          tenantId = tenant.id;
-          tenantSlug = tenant.slug;
-        }
-      } else {
-        // Multi-tenant: try subdomain, then x-tenant-id header
-        const host = (req.headers['host'] ?? '') as string;
-        const subdomain = this.extractSubdomain(host);
+    let tenant = null;
 
-        let tenant = null;
-        if (subdomain) {
-          tenant = await this.prisma.tenant.findUnique({ where: { slug: subdomain } });
-        }
-
-        if (!tenant) {
-          const headerId = req.headers['x-tenant-id'] as string | undefined;
-          if (headerId) {
-            tenant = await this.prisma.tenant.findFirst({
-              where: { OR: [{ id: headerId }, { slug: headerId }] },
-            });
-          }
-        }
-
-        if (!tenant) throw new NotFoundException('Tenant not found');
-        tenantId = tenant.id;
-        tenantSlug = tenant.slug;
+    if (mode === 'single') {
+      const configuredTenantId = process.env.SINGLE_TENANT_ID;
+      if (configuredTenantId) {
+        tenant = await this.prisma.tenant.findUnique({ where: { id: configuredTenantId } });
       }
 
-      tenantStorage.run({ tenantId, tenantSlug }, next);
-    } catch (err) {
-      this.logger.error('Tenant resolution failed', err);
-      // Re-throw so the global exception filter can handle it
-      throw err;
+      if (!tenant) {
+        tenant = await this.prisma.tenant.findFirst({ orderBy: { createdAt: 'asc' } });
+      }
+    } else {
+      const host = (req.headers['host'] ?? '') as string;
+      const subdomain = this.extractSubdomain(host);
+
+      if (subdomain) {
+        tenant = await this.prisma.tenant.findUnique({ where: { slug: subdomain } });
+      }
+
+      if (!tenant) {
+        const headerTenant = req.headers['x-tenant-id'] as string | undefined;
+
+        if (headerTenant) {
+          tenant = await this.prisma.tenant.findFirst({
+            where: {
+              OR: [{ id: headerTenant }, { slug: headerTenant }],
+            },
+          });
+        }
+      }
     }
+
+    if (!tenant) {
+      throw new NotFoundException('Tenant not found for incoming request');
+    }
+
+    req.tenantId = tenant.id;
+
+    tenantStorage.run(
+      {
+        tenantId: tenant.id,
+        tenantSlug: tenant.slug,
+        requestId,
+      },
+      () => {
+        this.logger.debug(`Tenant resolved: ${tenant.slug} (${requestId})`);
+        next();
+      },
+    );
   }
 
   private extractSubdomain(host: string): string | null {
     const withoutPort = host.split(':')[0] ?? '';
     const parts = withoutPort.split('.');
-    if (parts.length >= 3 && parts[0] !== 'www') {
-      return parts[0] ?? null;
+
+    if (parts.length >= 3 && parts[0] && parts[0] !== 'www') {
+      return parts[0];
     }
+
     return null;
   }
 }

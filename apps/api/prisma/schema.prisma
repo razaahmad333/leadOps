@@ -7,9 +7,19 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ─────────────────────────────────────────────
-// Tenant
-// ─────────────────────────────────────────────
+enum Role {
+  OWNER
+  STAFF
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  QUALIFIED
+  PENDING
+  WON
+  LOST
+}
 
 model Tenant {
   id        String   @id @default(uuid())
@@ -18,20 +28,32 @@ model Tenant {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  users     User[]
-  leads     Lead[]
-  followUps FollowUp[]
+  config        TenantConfig?
+  users         User[]
+  leads         Lead[]
+  followUps     FollowUp[]
+  leadActivities LeadActivity[]
+  webhookEvents WebhookMessage[]
 
   @@map("tenants")
 }
 
-// ─────────────────────────────────────────────
-// Users & Auth
-// ─────────────────────────────────────────────
+model TenantConfig {
+  id            String   @id @default(uuid())
+  tenantId      String   @unique @map("tenant_id")
+  timezone      String   @default("UTC")
+  businessStart String   @default("09:00") @map("business_start")
+  businessEnd   String   @default("18:00") @map("business_end")
+  stages        Json
+  reminderRules Json     @map("reminder_rules")
+  templates     Json
+  featureFlags  Json     @map("feature_flags")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
 
-enum Role {
-  OWNER
-  STAFF
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("tenant_configs")
 }
 
 model User {
@@ -44,61 +66,90 @@ model User {
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
-  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  followUps FollowUp[]
+  tenant     Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  followUps  FollowUp[]
+  activities LeadActivity[]
+  ownedLeads Lead[]         @relation("LeadOwner")
 
   @@unique([tenantId, email])
   @@map("users")
 }
 
-// ─────────────────────────────────────────────
-// Leads
-// ─────────────────────────────────────────────
-
-enum LeadStatus {
-  NEW
-  CONTACTED
-  QUALIFIED
-  PENDING
-  WON
-  LOST
-}
-
 model Lead {
-  id        String     @id @default(uuid())
-  tenantId  String     @map("tenant_id")
-  name      String
-  phone     String?
-  email     String?
-  source    String?
-  status    LeadStatus @default(NEW)
-  createdAt DateTime   @default(now()) @map("created_at")
-  updatedAt DateTime   @updatedAt @map("updated_at")
+  id             String     @id @default(uuid())
+  tenantId       String     @map("tenant_id")
+  ownerId        String?    @map("owner_id")
+  name           String
+  phone          String?
+  email          String?
+  source         String?
+  status         LeadStatus @default(NEW)
+  nextFollowUpAt DateTime?  @map("next_follow_up_at")
+  createdAt      DateTime   @default(now()) @map("created_at")
+  updatedAt      DateTime   @updatedAt @map("updated_at")
 
-  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  followUps FollowUp[]
+  tenant     Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  owner      User?          @relation("LeadOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  followUps  FollowUp[]
+  activities LeadActivity[]
 
+  @@index([tenantId, status])
+  @@index([tenantId, nextFollowUpAt])
   @@map("leads")
 }
 
-// ─────────────────────────────────────────────
-// Follow-Ups
-// ─────────────────────────────────────────────
-
 model FollowUp {
-  id          String   @id @default(uuid())
-  tenantId    String   @map("tenant_id")
-  leadId      String   @map("lead_id")
-  assignedTo  String?  @map("assigned_to")
-  scheduledAt DateTime @map("scheduled_at")
+  id          String    @id @default(uuid())
+  tenantId    String    @map("tenant_id")
+  leadId      String    @map("lead_id")
+  assignedTo  String?   @map("assigned_to")
+  scheduledAt DateTime  @map("scheduled_at")
   note        String?
-  done        Boolean  @default(false)
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  done        Boolean   @default(false)
+  doneAt      DateTime? @map("done_at")
+  escalatedAt DateTime? @map("escalated_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   lead   Lead   @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  user   User?  @relation(fields: [assignedTo], references: [id])
+  user   User?  @relation(fields: [assignedTo], references: [id], onDelete: SetNull)
 
+  @@index([tenantId, done, scheduledAt])
   @@map("follow_ups")
+}
+
+model LeadActivity {
+  id        String   @id @default(uuid())
+  tenantId  String   @map("tenant_id")
+  leadId    String   @map("lead_id")
+  actorId   String?  @map("actor_id")
+  type      String
+  message   String
+  metadata  Json?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  lead   Lead   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  actor  User?  @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, leadId, createdAt])
+  @@map("lead_activities")
+}
+
+model WebhookMessage {
+  id          String    @id @default(uuid())
+  tenantId    String?   @map("tenant_id")
+  provider    String
+  messageId   String    @map("message_id")
+  payloadHash String?   @map("payload_hash")
+  status      String    @default("RECEIVED")
+  receivedAt  DateTime  @default(now()) @map("received_at")
+  processedAt DateTime? @map("processed_at")
+
+  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+
+  @@unique([provider, messageId])
+  @@index([tenantId, provider])
+  @@map("webhook_messages")
 }

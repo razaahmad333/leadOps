@@ -1,23 +1,33 @@
 import React from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
-import { LoginPage } from './pages/LoginPage.tsx';
-import { DashboardPage } from './pages/DashboardPage.tsx';
-import { TodayPage } from './pages/TodayPage.tsx';
-import { LeadsPage } from './pages/LeadsPage.tsx';
-import { ProtectedRoute } from './components/ProtectedRoute.tsx';
-import { RoleRoute } from './components/RoleRoute.tsx';
-import { Toast } from './components/Toast.tsx';
+import { Navigate, Route, Routes } from 'react-router-dom';
+import { AppShell } from './components/layout/AppShell';
+import { ProtectedRoute } from './components/ProtectedRoute';
+import { RoleRoute } from './components/RoleRoute';
+import { useAuth } from './context/AuthContext';
+import { DashboardPage } from './pages/DashboardPage';
+import { LeadsPage } from './pages/LeadsPage';
+import { LoginPage } from './pages/LoginPage';
+import { SettingsPage } from './pages/SettingsPage';
+import { TodayPage } from './pages/TodayPage';
+
+function HomeRedirect(): React.JSX.Element {
+  const { user } = useAuth();
+
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  return <Navigate to={user.role === 'OWNER' ? '/owner/dashboard' : '/staff/today'} replace />;
+}
 
 export default function App(): React.JSX.Element {
   return (
-    <>
-      <Toast />
-      <Routes>
-        <Route path="/" element={<Navigate to="/login" replace />} />
-        <Route path="/login" element={<LoginPage />} />
+    <Routes>
+      <Route path="/login" element={<LoginPage />} />
 
-        {/* Protected routes — requires valid JWT */}
-        <Route element={<ProtectedRoute />}>
+      <Route element={<ProtectedRoute />}>
+        <Route element={<AppShell />}>
+          <Route path="/" element={<HomeRedirect />} />
           <Route
             path="/owner/dashboard"
             element={
@@ -28,10 +38,11 @@ export default function App(): React.JSX.Element {
           />
           <Route path="/staff/today" element={<TodayPage />} />
           <Route path="/leads" element={<LeadsPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
         </Route>
+      </Route>
 
-        <Route path="*" element={<Navigate to="/login" replace />} />
-      </Routes>
-    </>
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
   );
 }

@@ -1,8 +1,9 @@
-import { Module } from '@nestjs/common';
-import { TenantMiddleware } from './tenant.middleware';
+import { Global, Module } from '@nestjs/common';
+import { TenantConfigService } from './tenant-config.service';
 
+@Global()
 @Module({
-  providers: [TenantMiddleware],
-  exports: [TenantMiddleware],
+  providers: [TenantConfigService],
+  exports: [TenantConfigService],
 })
 export class TenantModule {}

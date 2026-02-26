@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { Role } from '../enums';
 
 export const LoginSchema = z.object({
   email: z.string().email('Invalid email address'),
@@ -11,7 +12,7 @@ export const AuthUserSchema = z.object({
   id: z.string(),
   email: z.string().email(),
   name: z.string(),
-  role: z.enum(['OWNER', 'STAFF']),
+  role: z.nativeEnum(Role),
   tenantId: z.string(),
 });
 
@@ -20,6 +21,7 @@ export type AuthUser = z.infer<typeof AuthUserSchema>;
 export const LoginResponseSchema = z.object({
   accessToken: z.string(),
   user: AuthUserSchema,
+  tenantName: z.string(),
 });
 
 export type LoginResponse = z.infer<typeof LoginResponseSchema>;

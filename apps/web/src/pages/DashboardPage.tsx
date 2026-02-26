@@ -1,62 +1,76 @@
 import React, { useEffect, useState } from 'react';
-import { Navbar } from '../components/Navbar.tsx';
-import { api } from '../lib/api.ts';
-import { useToast } from '../context/ToastContext.tsx';
-import { type DashboardStats } from '@leadops/shared';
+import { BarChart3, Clock3, CircleDashed, CircleOff, Sparkles, Trophy } from 'lucide-react';
+import type { DashboardStats } from '@leadops/shared';
+import { toast } from 'sonner';
+import { api } from '../lib/api';
+import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
+import { Skeleton } from '../components/ui/skeleton';
 
-interface StatCard {
-  key: keyof DashboardStats;
-  label: string;
-  color: string;
-}
-
-const STAT_CARDS: StatCard[] = [
-  { key: 'new', label: 'New Leads', color: 'bg-blue-500' },
-  { key: 'contacted', label: 'Contacted', color: 'bg-yellow-500' },
-  { key: 'pending', label: 'Pending', color: 'bg-orange-500' },
-  { key: 'won', label: 'Won', color: 'bg-green-500' },
-  { key: 'lost', label: 'Lost', color: 'bg-red-500' },
-  { key: 'todayFollowups', label: "Today's Follow-ups", color: 'bg-purple-500' },
+const CARD_META: Array<{ key: keyof DashboardStats; label: string; icon: React.ComponentType<{ className?: string }> }> = [
+  { key: 'new', label: 'New', icon: Sparkles },
+  { key: 'pending', label: 'Pending', icon: CircleDashed },
+  { key: 'missed', label: 'Missed', icon: CircleOff },
+  { key: 'won', label: 'Won', icon: Trophy },
+  { key: 'lost', label: 'Lost', icon: BarChart3 },
+  { key: 'avgResponseMinutes', label: 'Response (min)', icon: Clock3 },
 ];
 
 export function DashboardPage(): React.JSX.Element {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
-  const { showToast } = useToast();
 
   useEffect(() => {
     api
       .get<DashboardStats>('/v1/dashboard/stats')
       .then(setStats)
-      .catch((err: Error) => showToast(err.message, 'error'))
-      .finally(() => setLoading(false));
-  }, [showToast]);
+      .catch((error) => {
+        toast.error(error instanceof Error ? error.message : 'Failed to load dashboard');
+      })
+      .finally(() => {
+        setLoading(false);
+      });
+  }, []);
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <Navbar />
-      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        <h1 className="mb-6 text-2xl font-bold text-gray-900">Dashboard</h1>
+    <div className="space-y-5">
+      <div>
+        <h1 className="text-2xl font-bold">Owner Dashboard</h1>
+        <p className="text-sm text-muted-foreground">Real-time summary across tenant pipeline health.</p>
+      </div>
 
-        {loading ? (
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="h-28 animate-pulse rounded-xl bg-gray-200" />
-            ))}
-          </div>
-        ) : stats ? (
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-            {STAT_CARDS.map(({ key, label, color }) => (
-              <div key={key} className={`rounded-xl p-6 text-white shadow-sm ${color}`}>
-                <p className="text-sm font-medium opacity-90">{label}</p>
-                <p className="mt-2 text-4xl font-bold">{stats[key]}</p>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="text-gray-500">No stats available.</p>
-        )}
-      </main>
+      {loading ? (
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, index) => (
+            <Card key={index}>
+              <CardContent className="space-y-3 p-6">
+                <Skeleton className="h-4 w-24" />
+                <Skeleton className="h-8 w-16" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {CARD_META.map((item) => {
+            const Icon = item.icon;
+            const value = stats?.[item.key] ?? 0;
+
+            return (
+              <Card key={item.key} className="bg-card/95">
+                <CardHeader className="pb-2">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <Icon className="h-4 w-4 text-primary" />
+                    {item.label}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-3xl font-bold">{value}</p>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
