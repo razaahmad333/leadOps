@@ -17,6 +17,9 @@ export const CreateLeadSchema = z.object({
   email: z.string().email('Invalid email').optional(),
   source: z.string().max(100).optional(),
   ownerId: z.string().optional(),
+  branchId: z.string().optional(),
+  stageKey: z.string().optional(),
+  intakeData: z.record(z.unknown()).optional(),
   nextFollowUpAt: DateFromInput,
   note: z.string().max(1000).optional(),
 });
@@ -24,7 +27,8 @@ export const CreateLeadSchema = z.object({
 export type CreateLeadDto = z.infer<typeof CreateLeadSchema>;
 
 export const UpdateLeadStatusSchema = z.object({
-  status: z.nativeEnum(LeadStatus),
+  status: z.nativeEnum(LeadStatus).optional(),
+  stageKey: z.string().optional(),
   nextFollowUpAt: DateFromInput.optional(),
 });
 
@@ -40,11 +44,14 @@ export const LeadSchema = z.object({
   id: z.string(),
   tenantId: z.string(),
   ownerId: z.string().nullable(),
+  branchId: z.string().nullable().optional(),
   name: z.string(),
   phone: z.string().nullable(),
   email: z.string().nullable(),
   source: z.string().nullable(),
   status: z.nativeEnum(LeadStatus),
+  stageKey: z.string().nullable().optional(),
+  intakeData: z.record(z.unknown()).nullable().optional(),
   nextFollowUpAt: z.coerce.date().nullable(),
   createdAt: z.coerce.date(),
   updatedAt: z.coerce.date(),
@@ -69,6 +76,7 @@ export const LeadDetailSchema = z.object({
   followUps: z.array(
     z.object({
       id: z.string(),
+      kind: z.string(),
       scheduledAt: z.coerce.date(),
       done: z.boolean(),
       note: z.string().nullable(),

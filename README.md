@@ -17,6 +17,7 @@ Production-grade LeadOps platform for multi-tenant teams.
 - `infra/docker-compose.yml`
 - `docs/ARCHITECTURE.md`
 - `docs/FOUNDATION_RESEARCH.md`
+- `docs/INGESTIONS.md`
 
 ## Local Setup
 ```bash
@@ -36,7 +37,9 @@ pnpm db:generate
 pnpm db:migrate
 pnpm db:seed
 
-# 5) Set SINGLE_TENANT_ID in apps/api/.env from seed output
+# 5) Choose tenant resolution mode
+# Option A (single tenant): set DEPLOYMENT_MODE=single + SINGLE_TENANT_ID=<seeded tenant id> in apps/api/.env
+# Option B (multi tenant dev): set DEPLOYMENT_MODE=multi in apps/api/.env and set VITE_TENANT_ID=<seeded tenant id> in apps/web/.env
 
 # 6) Run everything (api + worker + web)
 pnpm dev
@@ -50,8 +53,10 @@ pnpm dev
 - Metrics: `http://localhost:3000/metrics`
 
 ## Local Credentials
-- Owner: `owner@local.test` / `Password123!`
-- Staff: `staff@local.test` / `Password123!`
+- Demo Lab OWNER: `owner+lab@local.test` / `Password123!`
+- Demo Lab STAFF: `staff+lab@local.test` / `Password123!`
+- Demo Generic OWNER: `owner+generic@local.test` / `Password123!`
+- Demo Generic STAFF: `staff+generic@local.test` / `Password123!`
 
 ## Scripts
 - `pnpm dev`: run API + worker + web
@@ -63,13 +68,16 @@ pnpm dev
 - `pnpm db:seed`: seed local data (API)
 
 ## Verification Checklist
-1. Login works for owner/staff users.
-2. Tenant context works (`DEPLOYMENT_MODE=multi` + `x-tenant-id` header, or single-tenant env).
-3. Create lead works and enforces `nextFollowUpAt`.
-4. Created lead appears in staff Today follow-ups.
-5. Owner dashboard counters load.
-6. Worker starts and processes demo summary/reminder jobs.
+1. Login as Demo Lab staff: labels show Enquiries/Bookings/Reports and lab workflow vocabulary.
+2. Demo Lab intake form shows lab fields: `testOrPackage`, `homeCollection`, `preferredSlot`, `pincode`, `source`.
+3. Dashboard cards switch for Demo Lab (`Enquiries Today`, `Bookings Today`, `Post-Report Follow-ups Due`, etc.).
+4. Login as Demo Generic: UI remains generic LeadOps labels and generic intake fields.
+5. Create lead/enquiry works and enforces `nextFollowUpAt`.
+6. Tenant context works via `GET /v1/tenant/me` and `DEPLOYMENT_MODE=multi` + `VITE_TENANT_ID` (or single-tenant env).
+7. Change stage to `REPORT_DELIVERED`: post-report follow-up task is created/scheduled from tenant config rules.
+8. Worker starts and processes reminder jobs.
 
 ## Notes
 - WhatsApp integration is scaffolded only (non-goal for v1).
-- Settings page is read-only placeholder backed by tenant config store.
+- Settings page is read-only placeholder backed by tenant config (`/v1/tenant/me` + `/v1/settings`).
+- Ingestion examples (`curl` + scripts) are documented in `docs/INGESTIONS.md`.

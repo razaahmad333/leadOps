@@ -12,6 +12,11 @@ enum Role {
   STAFF
 }
 
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+}
+
 enum LeadStatus {
   NEW
   CONTACTED
@@ -28,12 +33,14 @@ model Tenant {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  config        TenantConfig?
-  users         User[]
-  leads         Lead[]
-  followUps     FollowUp[]
+  config         TenantConfig?
+  users          User[]
+  leads          Lead[]
+  followUps      FollowUp[]
   leadActivities LeadActivity[]
-  webhookEvents WebhookMessage[]
+  webhookEvents  WebhookMessage[]
+  roles          PermissionRole[]
+  branches       Branch[]
 
   @@map("tenants")
 }
@@ -41,6 +48,9 @@ model Tenant {
 model TenantConfig {
   id            String   @id @default(uuid())
   tenantId      String   @unique @map("tenant_id")
+  industryPreset String  @default("GENERIC") @map("industry_preset")
+  configVersion Int      @default(1) @map("config_version")
+  displayConfig Json?    @map("display_config")
   timezone      String   @default("UTC")
   businessStart String   @default("09:00") @map("business_start")
   businessEnd   String   @default("18:00") @map("business_end")
@@ -61,28 +71,124 @@ model User {
   tenantId     String   @map("tenant_id")
   email        String
   name         String
+  phone        String?
   passwordHash String   @map("password_hash")
   role         Role     @default(STAFF)
+  isSuperAdmin Boolean  @default(false) @map("is_super_admin")
+  isTenantAdmin Boolean @default(false) @map("is_tenant_admin")
+  status       UserStatus @default(ACTIVE)
+  defaultBranchId String? @map("default_branch_id")
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
-  tenant     Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  followUps  FollowUp[]
-  activities LeadActivity[]
-  ownedLeads Lead[]         @relation("LeadOwner")
+  tenant         Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  defaultBranch  Branch?            @relation("UserDefaultBranch", fields: [defaultBranchId], references: [id], onDelete: SetNull)
+  followUps      FollowUp[]
+  activities     LeadActivity[]
+  ownedLeads     Lead[]             @relation("LeadOwner")
+  userRoles      UserRole[]
+  branchScopes   UserBranchScope[]
 
   @@unique([tenantId, email])
+  @@index([tenantId, status])
   @@map("users")
+}
+
+model Permission {
+  id          String           @id @default(uuid())
+  key         String           @unique
+  description String
+  group       String
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
+
+  rolePermissions RolePermission[]
+
+  @@map("permissions")
+}
+
+model PermissionRole {
+  id          String   @id @default(uuid())
+  tenantId     String?  @map("tenant_id")
+  name        String
+  description String?
+  isSystem    Boolean  @default(false) @map("is_system")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant          Tenant?          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  rolePermissions RolePermission[]
+  userRoles       UserRole[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("roles")
+}
+
+model RolePermission {
+  roleId       String @map("role_id")
+  permissionId String @map("permission_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  role       PermissionRole @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission     @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+model UserRole {
+  userId    String   @map("user_id")
+  roleId    String   @map("role_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role PermissionRole @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@map("user_roles")
+}
+
+model Branch {
+  id        String   @id @default(uuid())
+  tenantId  String   @map("tenant_id")
+  name      String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant        Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  usersDefault  User[]             @relation("UserDefaultBranch")
+  usersScopes   UserBranchScope[]
+  leads         Lead[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("branches")
+}
+
+model UserBranchScope {
+  userId    String   @map("user_id")
+  branchId  String   @map("branch_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  branch Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@id([userId, branchId])
+  @@map("user_branch_scopes")
 }
 
 model Lead {
   id             String     @id @default(uuid())
   tenantId       String     @map("tenant_id")
   ownerId        String?    @map("owner_id")
+  branchId       String?    @map("branch_id")
+  stageKey       String?    @map("stage_key")
   name           String
   phone          String?
   email          String?
   source         String?
+  intakeData     Json?      @map("intake_data")
   status         LeadStatus @default(NEW)
   nextFollowUpAt DateTime?  @map("next_follow_up_at")
   createdAt      DateTime   @default(now()) @map("created_at")
@@ -90,11 +196,14 @@ model Lead {
 
   tenant     Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   owner      User?          @relation("LeadOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  branch     Branch?        @relation(fields: [branchId], references: [id], onDelete: SetNull)
   followUps  FollowUp[]
   activities LeadActivity[]
 
   @@index([tenantId, status])
+  @@index([tenantId, stageKey])
   @@index([tenantId, nextFollowUpAt])
+  @@index([tenantId, branchId])
   @@map("leads")
 }
 
@@ -103,6 +212,7 @@ model FollowUp {
   tenantId    String    @map("tenant_id")
   leadId      String    @map("lead_id")
   assignedTo  String?   @map("assigned_to")
+  kind        String    @default("GENERAL")
   scheduledAt DateTime  @map("scheduled_at")
   note        String?
   done        Boolean   @default(false)

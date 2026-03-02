@@ -15,6 +15,9 @@ export interface StatusChangedEvent {
   leadId: string;
   from: string;
   to: string;
+  fromStageKey?: string | null;
+  toStageKey?: string | null;
+  milestone?: string;
 }
 
 export interface FollowupDueEvent {

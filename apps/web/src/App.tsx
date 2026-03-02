@@ -1,23 +1,26 @@
 import React from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { AppShell } from './components/layout/AppShell';
+import { PermissionRoute } from './components/PermissionRoute';
 import { ProtectedRoute } from './components/ProtectedRoute';
-import { RoleRoute } from './components/RoleRoute';
 import { useAuth } from './context/AuthContext';
 import { DashboardPage } from './pages/DashboardPage';
 import { LeadsPage } from './pages/LeadsPage';
 import { LoginPage } from './pages/LoginPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { PermissionsCatalogPage } from './pages/settings/PermissionsCatalogPage';
+import { RolesPage } from './pages/settings/RolesPage';
+import { TeamPage } from './pages/settings/TeamPage';
 import { TodayPage } from './pages/TodayPage';
 
 function HomeRedirect(): React.JSX.Element {
-  const { user } = useAuth();
+  const { user, defaultRoute } = useAuth();
 
   if (!user) {
     return <Navigate to="/login" replace />;
   }
 
-  return <Navigate to={user.role === 'OWNER' ? '/owner/dashboard' : '/staff/today'} replace />;
+  return <Navigate to={defaultRoute} replace />;
 }
 
 export default function App(): React.JSX.Element {
@@ -31,14 +34,59 @@ export default function App(): React.JSX.Element {
           <Route
             path="/owner/dashboard"
             element={
-              <RoleRoute role="OWNER">
+              <PermissionRoute permission="dashboard.view">
                 <DashboardPage />
-              </RoleRoute>
+              </PermissionRoute>
             }
           />
-          <Route path="/staff/today" element={<TodayPage />} />
-          <Route path="/leads" element={<LeadsPage />} />
-          <Route path="/settings" element={<SettingsPage />} />
+          <Route
+            path="/staff/today"
+            element={
+              <PermissionRoute permission="followups.view">
+                <TodayPage />
+              </PermissionRoute>
+            }
+          />
+          <Route
+            path="/leads"
+            element={
+              <PermissionRoute permission="enquiries.view">
+                <LeadsPage />
+              </PermissionRoute>
+            }
+          />
+          <Route
+            path="/settings"
+            element={
+              <PermissionRoute permission="settings.view">
+                <SettingsPage />
+              </PermissionRoute>
+            }
+          />
+          <Route
+            path="/settings/team"
+            element={
+              <PermissionRoute permission="users.manage">
+                <TeamPage />
+              </PermissionRoute>
+            }
+          />
+          <Route
+            path="/settings/roles"
+            element={
+              <PermissionRoute permission="roles.manage">
+                <RolesPage />
+              </PermissionRoute>
+            }
+          />
+          <Route
+            path="/settings/permissions"
+            element={
+              <PermissionRoute permission="permissions.view">
+                <PermissionsCatalogPage />
+              </PermissionRoute>
+            }
+          />
         </Route>
       </Route>
 

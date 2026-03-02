@@ -32,7 +32,7 @@ const SheetContent = React.forwardRef<
     <Dialog.Content
       ref={ref}
       className={cn(
-        'fixed right-0 top-0 z-50 h-full w-full max-w-xl border-l bg-background p-6 shadow-xl data-[state=open]:animate-in data-[state=closed]:animate-out sm:max-w-2xl',
+        'fixed bottom-0 right-0 z-50 h-[92vh] w-full overflow-y-auto rounded-t-[2rem] border-t bg-background p-5 shadow-xl data-[state=open]:animate-in data-[state=closed]:animate-out sm:top-0 sm:h-full sm:max-w-2xl sm:rounded-none sm:border-l sm:border-t-0 sm:p-6',
         className,
       )}
       {...props}

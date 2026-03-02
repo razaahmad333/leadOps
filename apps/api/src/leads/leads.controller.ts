@@ -5,7 +5,6 @@ import {
   Param,
   Patch,
   Post,
-  UseGuards,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -20,66 +19,70 @@ import {
   CreateLeadSchema,
   Lead,
   LeadDetail,
+  AuthUser,
   UpdateLeadStatusDto,
   UpdateLeadStatusSchema,
 } from '@leadops/shared';
+import { Permissions } from '../access-control/permissions.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
-import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
-import { RolesGuard } from '../common/guards/roles.guard';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 import { LeadsService } from './leads.service';
 
 @ApiTags('leads')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('leads')
 export class LeadsController {
   constructor(private readonly leadsService: LeadsService) {}
 
   @Get()
+  @Permissions('enquiries.view')
   @ApiOperation({ summary: 'List leads for the current tenant' })
-  findAll(): Promise<Lead[]> {
-    return this.leadsService.findAll();
+  findAll(@CurrentUser() user: AuthUser): Promise<Lead[]> {
+    return this.leadsService.findAll(user);
   }
 
   @Get(':id')
+  @Permissions('enquiries.view')
   @ApiOperation({ summary: 'Get lead details and activity timeline' })
-  findOne(@Param('id') id: string): Promise<LeadDetail> {
-    return this.leadsService.findOne(id);
+  findOne(@Param('id') id: string, @CurrentUser() user: AuthUser): Promise<LeadDetail> {
+    return this.leadsService.findOne(id, user);
   }
 
   @Post()
+  @Permissions('enquiries.create')
   @ApiOperation({ summary: 'Create a lead with mandatory next follow-up' })
   @ApiResponse({ status: 201, description: 'Lead created' })
   create(
     @Body(new ZodValidationPipe(CreateLeadSchema)) dto: CreateLeadDto,
-    @CurrentUser() user: { id: string },
+    @CurrentUser() user: AuthUser,
   ): Promise<Lead> {
     return this.leadsService.create(dto, {
-      actorId: user.id,
+      actor: user,
       activityType: 'lead.created.manual',
       activityMessage: 'Lead manually created',
     });
   }
 
   @Patch(':id/status')
+  @Permissions('enquiries.edit')
   @ApiOperation({ summary: 'Update lead status' })
   updateStatus(
     @Param('id') id: string,
     @Body(new ZodValidationPipe(UpdateLeadStatusSchema)) dto: UpdateLeadStatusDto,
-    @CurrentUser() user: { id: string },
+    @CurrentUser() user: AuthUser,
   ): Promise<Lead> {
-    return this.leadsService.updateStatus(id, dto, user.id);
+    return this.leadsService.updateStatus(id, dto, user);
   }
 
   @Post(':id/notes')
+  @Permissions('enquiries.edit')
   @ApiOperation({ summary: 'Add a note to the lead activity timeline' })
   async addNote(
     @Param('id') id: string,
     @Body(new ZodValidationPipe(CreateLeadNoteSchema)) dto: CreateLeadNoteDto,
-    @CurrentUser() user: { id: string },
+    @CurrentUser() user: AuthUser,
   ): Promise<{ success: boolean }> {
-    await this.leadsService.addNote(id, dto.note, user.id);
+    await this.leadsService.addNote(id, dto.note, user);
     return { success: true };
   }
 }

@@ -70,4 +70,5 @@ export const api = {
     request(path, { method: 'POST', body: JSON.stringify(body), ...opts }),
   patch: <T>(path: string, body: unknown, opts?: RequestOptions): Promise<T> =>
     request(path, { method: 'PATCH', body: JSON.stringify(body), ...opts }),
+  delete: <T>(path: string, opts?: RequestOptions): Promise<T> => request(path, { method: 'DELETE', ...opts }),
 };

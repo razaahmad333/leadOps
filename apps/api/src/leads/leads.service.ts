@@ -4,7 +4,9 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import {
+  AuthUser,
   ACTIVE_LEAD_STATUSES,
+  BranchScopeType,
   CreateLeadDto,
   DOMAIN_EVENTS,
   Lead,
@@ -12,14 +14,17 @@ import {
   LeadStatus,
   UpdateLeadStatusDto,
 } from '@leadops/shared';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { getTenantContext } from '../tenant/tenant.store';
 import { TenantConfigService } from '../tenant/tenant-config.service';
 import { QueueService } from '../queue/queue.service';
 import { DomainEventsService } from '../events/domain-events.service';
+import { BranchScopeService } from '../access-control/branch-scope.service';
+import { MilestoneRulesService } from './milestone-rules.service';
 
 interface CreateLeadOptions {
-  actorId?: string | null;
+  actor?: AuthUser;
   activityType?: string;
   activityMessage?: string;
 }
@@ -31,29 +36,32 @@ export class LeadsService {
     private readonly tenantConfig: TenantConfigService,
     private readonly queue: QueueService,
     private readonly domainEvents: DomainEventsService,
+    private readonly branchScope: BranchScopeService,
+    private readonly milestoneRules: MilestoneRulesService,
   ) {}
 
-  async findAll(): Promise<Lead[]> {
+  async findAll(user: AuthUser): Promise<Lead[]> {
     const tenant = getTenantContext();
 
     const leads = await this.prisma.lead.findMany({
-      where: { tenantId: tenant?.tenantId },
+      where: this.branchScope.applyLeadFilter(user, { tenantId: tenant?.tenantId }),
       orderBy: { createdAt: 'desc' },
     });
 
-    return leads as Lead[];
+    return leads as unknown as Lead[];
   }
 
-  async findOne(id: string): Promise<LeadDetail> {
+  async findOne(id: string, user: AuthUser): Promise<LeadDetail> {
     const tenant = getTenantContext();
 
     const lead = await this.prisma.lead.findFirst({
-      where: { id, tenantId: tenant?.tenantId },
+      where: this.branchScope.applyLeadFilter(user, { id, tenantId: tenant?.tenantId }),
       include: {
         followUps: {
           orderBy: { scheduledAt: 'asc' },
           select: {
             id: true,
+            kind: true,
             scheduledAt: true,
             done: true,
             note: true,
@@ -87,29 +95,68 @@ export class LeadsService {
 
   async create(dto: CreateLeadDto, options: CreateLeadOptions = {}): Promise<Lead> {
     const tenant = getTenantContext();
-    this.ensureActiveLeadFollowUp(dto.nextFollowUpAt);
+    const actor = options.actor;
 
-    const normalizedFollowUp = await this.tenantConfig.normalizeToBusinessWindow(dto.nextFollowUpAt);
+    const defaultStage = await this.tenantConfig.getDefaultStage(tenant?.tenantId);
+    const resolvedStage = dto.stageKey
+      ? await this.tenantConfig.resolveStage(dto.stageKey, tenant?.tenantId)
+      : defaultStage;
+
+    if (!resolvedStage) {
+      throw new BadRequestException('Invalid stage key for tenant pipeline');
+    }
+
+    this.ensureActiveLeadFollowUp(resolvedStage.internalStatus, dto.nextFollowUpAt);
+
+    const normalizedFollowUp = await this.tenantConfig.normalizeToBusinessWindow(
+      dto.nextFollowUpAt,
+      tenant?.tenantId,
+    );
+
+    const serializedIntakeData = dto.intakeData
+      ? (JSON.parse(JSON.stringify(dto.intakeData)) as Prisma.InputJsonValue)
+      : undefined;
+    let selectedBranchId = dto.branchId ?? null;
+
+    if (!selectedBranchId && actor?.branchScope.scopeType === BranchScopeType.SELECTED) {
+      selectedBranchId = actor.branchScope.branchIds[0] ?? null;
+    }
+
+    if (!selectedBranchId && tenant?.tenantId) {
+      const defaultBranch = await this.prisma.branch.findFirst({
+        where: { tenantId: tenant.tenantId },
+        orderBy: { createdAt: 'asc' },
+      });
+      selectedBranchId = defaultBranch?.id ?? null;
+    }
+
+    if (actor) {
+      this.branchScope.ensureBranchAccess(actor, selectedBranchId);
+    }
 
     const lead = await this.prisma.lead.create({
       data: {
         tenantId: tenant?.tenantId ?? '',
         ownerId: dto.ownerId,
+        branchId: selectedBranchId,
+        stageKey: resolvedStage.key,
         name: dto.name,
         phone: dto.phone,
         email: dto.email,
         source: dto.source,
-        status: LeadStatus.NEW,
+        intakeData: serializedIntakeData,
+        status: resolvedStage.internalStatus,
         nextFollowUpAt: normalizedFollowUp,
       },
     });
 
-    await this.prisma.followUp.create({
+    const initialFollowUp = await this.prisma.followUp.create({
       data: {
         tenantId: lead.tenantId,
         leadId: lead.id,
         assignedTo: lead.ownerId,
         scheduledAt: normalizedFollowUp,
+        kind: 'GENERAL',
         note: dto.note ?? 'Initial follow-up',
       },
     });
@@ -118,7 +165,7 @@ export class LeadsService {
       data: {
         tenantId: lead.tenantId,
         leadId: lead.id,
-        actorId: options.actorId ?? null,
+        actorId: actor?.id ?? null,
         type: options.activityType ?? 'lead.created',
         message: options.activityMessage ?? 'Lead created',
       },
@@ -127,12 +174,7 @@ export class LeadsService {
     await this.queue.scheduleFollowupReminder(
       {
         tenantId: lead.tenantId,
-        followUpId: (
-          await this.prisma.followUp.findFirstOrThrow({
-            where: { tenantId: lead.tenantId, leadId: lead.id },
-            orderBy: { createdAt: 'desc' },
-          })
-        ).id,
+        followUpId: initialFollowUp.id,
       },
       normalizedFollowUp,
     );
@@ -142,34 +184,59 @@ export class LeadsService {
       leadId: lead.id,
     });
 
-    return lead as Lead;
+    return lead as unknown as Lead;
   }
 
-  async updateStatus(id: string, dto: UpdateLeadStatusDto, actorId?: string): Promise<Lead> {
+  async updateStatus(id: string, dto: UpdateLeadStatusDto, actor: AuthUser): Promise<Lead> {
     const tenant = getTenantContext();
 
     const existing = await this.prisma.lead.findFirst({
-      where: { id, tenantId: tenant?.tenantId },
+      where: this.branchScope.applyLeadFilter(actor, { id, tenantId: tenant?.tenantId }),
     });
 
     if (!existing) {
       throw new NotFoundException(`Lead ${id} not found`);
     }
 
+    if (!dto.status && !dto.stageKey) {
+      throw new BadRequestException('Either status or stageKey is required');
+    }
+
+    const nextStageKey = await this.resolveTargetStageKey(existing.stageKey, dto, tenant?.tenantId);
+    const nextStage = nextStageKey
+      ? await this.tenantConfig.resolveStage(nextStageKey, tenant?.tenantId)
+      : null;
+
+    if (!nextStage) {
+      throw new BadRequestException('Invalid stage key for tenant pipeline');
+    }
+
+    const allowedTransition = await this.tenantConfig.canTransition(
+      existing.stageKey,
+      nextStage.key,
+      tenant?.tenantId,
+    );
+
+    if (!allowedTransition) {
+      throw new BadRequestException(`Transition from ${existing.stageKey ?? 'N/A'} to ${nextStage.key} is not allowed`);
+    }
+
+    const resolvedStatus = dto.status ?? nextStage.internalStatus;
     const nextFollowUpAt =
-      dto.nextFollowUpAt && ACTIVE_LEAD_STATUSES.includes(dto.status)
-        ? await this.tenantConfig.normalizeToBusinessWindow(dto.nextFollowUpAt)
+      dto.nextFollowUpAt && ACTIVE_LEAD_STATUSES.includes(resolvedStatus)
+        ? await this.tenantConfig.normalizeToBusinessWindow(dto.nextFollowUpAt, tenant?.tenantId)
         : existing.nextFollowUpAt;
 
-    if (ACTIVE_LEAD_STATUSES.includes(dto.status) && !nextFollowUpAt) {
+    if (ACTIVE_LEAD_STATUSES.includes(resolvedStatus) && !nextFollowUpAt) {
       throw new BadRequestException('Every active lead must have a next follow-up time');
     }
 
     const updated = await this.prisma.lead.update({
       where: { id },
       data: {
-        status: dto.status,
-        nextFollowUpAt: ACTIVE_LEAD_STATUSES.includes(dto.status) ? nextFollowUpAt : null,
+        status: resolvedStatus,
+        stageKey: nextStage.key,
+        nextFollowUpAt: ACTIVE_LEAD_STATUSES.includes(resolvedStatus) ? nextFollowUpAt : existing.nextFollowUpAt,
       },
     });
 
@@ -177,30 +244,48 @@ export class LeadsService {
       data: {
         tenantId: updated.tenantId,
         leadId: updated.id,
-        actorId: actorId ?? null,
+        actorId: actor?.id ?? null,
         type: 'lead.status.changed',
-        message: `Status updated to ${dto.status}`,
+        message: `Status updated to ${nextStage.label}`,
         metadata: {
-          from: existing.status,
-          to: dto.status,
+          fromStatus: existing.status,
+          toStatus: resolvedStatus,
+          fromStageKey: existing.stageKey,
+          toStageKey: nextStage.key,
         },
       },
     });
+
+    const milestone = await this.tenantConfig.getStageMilestone(nextStage.key, tenant?.tenantId);
 
     this.domainEvents.emit(DOMAIN_EVENTS.STATUS_CHANGED, {
       tenantId: updated.tenantId,
       leadId: updated.id,
       from: existing.status,
-      to: dto.status,
+      to: resolvedStatus,
+      fromStageKey: existing.stageKey,
+      toStageKey: nextStage.key,
+      milestone: milestone ?? undefined,
     });
 
-    return updated as Lead;
+    if (milestone && existing.stageKey !== nextStage.key) {
+      await this.milestoneRules.handleMilestone({
+        tenantId: updated.tenantId,
+        leadId: updated.id,
+        actorId: actor?.id,
+        milestone,
+      });
+    }
+
+    return updated as unknown as Lead;
   }
 
-  async addNote(id: string, note: string, actorId?: string): Promise<void> {
+  async addNote(id: string, note: string, actor: AuthUser): Promise<void> {
     const tenant = getTenantContext();
 
-    const lead = await this.prisma.lead.findFirst({ where: { id, tenantId: tenant?.tenantId } });
+    const lead = await this.prisma.lead.findFirst({
+      where: this.branchScope.applyLeadFilter(actor, { id, tenantId: tenant?.tenantId }),
+    });
     if (!lead) {
       throw new NotFoundException(`Lead ${id} not found`);
     }
@@ -209,16 +294,44 @@ export class LeadsService {
       data: {
         tenantId: lead.tenantId,
         leadId: lead.id,
-        actorId: actorId ?? null,
+        actorId: actor?.id ?? null,
         type: 'lead.note.added',
         message: note,
       },
     });
   }
 
-  private ensureActiveLeadFollowUp(nextFollowUpAt?: Date): void {
-    if (!nextFollowUpAt) {
+  private ensureActiveLeadFollowUp(status: LeadStatus, nextFollowUpAt?: Date): void {
+    if (ACTIVE_LEAD_STATUSES.includes(status) && !nextFollowUpAt) {
       throw new BadRequestException('Every active lead must have a next follow-up time');
     }
+  }
+
+  private async resolveTargetStageKey(
+    existingStageKey: string | null,
+    dto: UpdateLeadStatusDto,
+    tenantId?: string,
+  ): Promise<string> {
+    if (dto.stageKey) {
+      return dto.stageKey;
+    }
+
+    if (dto.status) {
+      const config = await this.tenantConfig.getDisplayConfig(tenantId);
+      const mapped =
+        config.pipelineConfig.stages.find((stage) => stage.internalStatus === dto.status && stage.key === dto.status)
+        ?? config.pipelineConfig.stages.find((stage) => stage.internalStatus === dto.status);
+
+      if (mapped) {
+        return mapped.key;
+      }
+    }
+
+    if (existingStageKey) {
+      return existingStageKey;
+    }
+
+    const fallback = await this.tenantConfig.getDefaultStage(tenantId);
+    return fallback.key;
   }
 }

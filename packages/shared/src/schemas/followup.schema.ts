@@ -23,6 +23,7 @@ export const FollowUpSchema = z.object({
   id: z.string(),
   tenantId: z.string(),
   leadId: z.string(),
+  kind: z.string(),
   scheduledAt: z.coerce.date(),
   note: z.string().nullable(),
   done: z.boolean(),

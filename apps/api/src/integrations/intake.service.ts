@@ -30,7 +30,6 @@ export class IntakeService {
     }
 
     const lead = await this.leadsService.create(this.websiteAdapter.normalize(payload), {
-      actorId: null,
       activityType: 'lead.intake.website',
       activityMessage: 'Lead created from website form intake',
     });

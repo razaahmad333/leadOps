@@ -1,0 +1,298 @@
+import {
+  IndustryPreset,
+  LeadStatus,
+  MilestoneKey,
+  TenantDisplayConfig,
+} from '@leadops/shared';
+
+const genericDisplayConfig: TenantDisplayConfig = {
+  vocabulary: {
+    leadSingular: 'Lead',
+    leadPlural: 'Leads',
+    leadCreateTitle: 'Create lead',
+    dashboardTitle: 'Owner Dashboard',
+    todayFollowupsTitle: "Today's Follow-ups",
+    bookingLabel: 'Won',
+    reportLabel: 'Report',
+    stageLabel: 'Stage',
+    followupLabel: 'Follow-up',
+    sidebarSubtitle: 'LeadOps',
+    emptyLeads: 'No leads found. Adjust filters or create a new lead.',
+    emptyFollowups: 'No follow-ups due right now.',
+    statusLabels: {
+      NEW: 'New',
+      CONTACTED: 'Contacted',
+      QUALIFIED: 'Qualified',
+      PENDING: 'Pending',
+      WON: 'Won',
+      LOST: 'Lost',
+    },
+  },
+  dashboardConfig: {
+    cards: [
+      { key: 'new', label: 'New', metricKey: 'new', icon: 'sparkles' },
+      { key: 'pending', label: 'Pending', metricKey: 'pending', icon: 'circle-dashed' },
+      { key: 'missed', label: 'Missed', metricKey: 'missed', icon: 'circle-off' },
+      { key: 'won', label: 'Won', metricKey: 'won', icon: 'trophy' },
+      { key: 'lost', label: 'Lost', metricKey: 'lost', icon: 'bar-chart' },
+      {
+        key: 'avgResponseMinutes',
+        label: 'Avg First Response Time',
+        metricKey: 'avgResponseMinutes',
+        icon: 'clock',
+      },
+    ],
+  },
+  leadFieldsConfig: {
+    fields: [
+      { key: 'name', label: 'Lead name', type: 'text', required: true, section: 'core' },
+      { key: 'nextFollowUpAt', label: 'Next follow-up', type: 'datetime', required: true, section: 'core' },
+      { key: 'email', label: 'Email', type: 'email', required: false, section: 'core' },
+      { key: 'phone', label: 'Phone', type: 'phone', required: false, section: 'core' },
+      { key: 'note', label: 'Initial note', type: 'textarea', required: false, section: 'core' },
+      {
+        key: 'source',
+        label: 'Source',
+        type: 'select',
+        required: false,
+        section: 'intake',
+        options: ['web', 'whatsapp', 'call', 'walkin', 'referral'],
+      },
+    ],
+  },
+  pipelineConfig: {
+    stages: [
+      {
+        key: 'NEW',
+        label: 'New',
+        internalStatus: LeadStatus.NEW,
+        allowedNext: ['CONTACTED', 'LOST'],
+        terminal: false,
+        order: 0,
+      },
+      {
+        key: 'CONTACTED',
+        label: 'Contacted',
+        internalStatus: LeadStatus.CONTACTED,
+        allowedNext: ['QUALIFIED', 'PENDING', 'LOST'],
+        terminal: false,
+        order: 1,
+      },
+      {
+        key: 'QUALIFIED',
+        label: 'Qualified',
+        internalStatus: LeadStatus.QUALIFIED,
+        allowedNext: ['PENDING', 'WON', 'LOST'],
+        terminal: false,
+        order: 2,
+      },
+      {
+        key: 'PENDING',
+        label: 'Pending',
+        internalStatus: LeadStatus.PENDING,
+        allowedNext: ['WON', 'LOST'],
+        terminal: false,
+        order: 3,
+      },
+      {
+        key: 'WON',
+        label: 'Won',
+        internalStatus: LeadStatus.WON,
+        allowedNext: [],
+        terminal: true,
+        order: 4,
+      },
+      {
+        key: 'LOST',
+        label: 'Lost',
+        internalStatus: LeadStatus.LOST,
+        allowedNext: [],
+        terminal: true,
+        order: 5,
+      },
+    ],
+  },
+  followupRules: {
+    firstReminderMinutes: 30,
+    escalationMinutes: 120,
+    postReportFollowupDays: 3,
+    postReportFollowupNote: 'Follow up after report delivery.',
+  },
+  themeConfig: {
+    accentColor: '#2f90b7',
+    sidebarTitle: 'LeadOps',
+  },
+  featureFlags: {
+    aiAssist: true,
+  },
+};
+
+const diagnosticsDisplayConfig: TenantDisplayConfig = {
+  vocabulary: {
+    leadSingular: 'Enquiry',
+    leadPlural: 'Enquiries',
+    leadCreateTitle: 'Create enquiry',
+    dashboardTitle: 'Lab Operations Dashboard',
+    todayFollowupsTitle: "Today's Follow-ups",
+    bookingLabel: 'Booking',
+    reportLabel: 'Report',
+    stageLabel: 'Lab workflow stage',
+    followupLabel: 'Task',
+    sidebarSubtitle: 'Lab LeadOps',
+    emptyLeads: 'No enquiries found. Capture a new enquiry to start the workflow.',
+    emptyFollowups: 'No follow-up tasks due right now.',
+    statusLabels: {
+      ENQUIRY_RECEIVED: 'Enquiry Received',
+      BOOKING_CONFIRMED: 'Booking Confirmed',
+      SAMPLE_COLLECTED: 'Sample Collected',
+      REPORT_DELIVERED: 'Report Delivered',
+      POST_REPORT_FOLLOWUP: 'Post-Report Follow-up',
+      COMPLETED: 'Completed',
+      NOT_INTERESTED: 'Not Interested',
+    },
+  },
+  dashboardConfig: {
+    cards: [
+      { key: 'enquiriesToday', label: 'Enquiries Today', metricKey: 'enquiriesToday', icon: 'sparkles' },
+      { key: 'bookingsToday', label: 'Bookings Today', metricKey: 'bookingsToday', icon: 'clipboard-check' },
+      { key: 'pendingFollowups', label: 'Pending Follow-ups', metricKey: 'pendingFollowups', icon: 'circle-dashed' },
+      { key: 'missedFollowups', label: 'Missed Follow-ups', metricKey: 'missedFollowups', icon: 'circle-off' },
+      {
+        key: 'avgResponseMinutes',
+        label: 'Avg First Response Time',
+        metricKey: 'avgResponseMinutes',
+        icon: 'clock',
+      },
+      {
+        key: 'postReportFollowupsDue',
+        label: 'Post-Report Follow-ups Due',
+        metricKey: 'postReportFollowupsDue',
+        icon: 'activity',
+      },
+    ],
+  },
+  leadFieldsConfig: {
+    fields: [
+      { key: 'name', label: 'Patient name', type: 'text', required: true, section: 'core' },
+      { key: 'nextFollowUpAt', label: 'Next follow-up', type: 'datetime', required: true, section: 'core' },
+      { key: 'phone', label: 'Phone', type: 'phone', required: true, section: 'core' },
+      { key: 'email', label: 'Email', type: 'email', required: false, section: 'core' },
+      { key: 'note', label: 'Notes', type: 'textarea', required: false, section: 'core' },
+      {
+        key: 'testOrPackage',
+        label: 'Test / Package',
+        type: 'select',
+        required: true,
+        section: 'intake',
+        options: ['CBC', 'LFT', 'KFT', 'Vitamin Profile', 'Diabetes Package'],
+      },
+      {
+        key: 'homeCollection',
+        label: 'Home Collection',
+        type: 'boolean',
+        required: true,
+        section: 'intake',
+      },
+      {
+        key: 'preferredSlot',
+        label: 'Preferred Slot',
+        type: 'datetime',
+        required: false,
+        section: 'intake',
+      },
+      { key: 'pincode', label: 'Pincode', type: 'text', required: true, section: 'intake' },
+      {
+        key: 'source',
+        label: 'Source',
+        type: 'select',
+        required: true,
+        section: 'intake',
+        options: ['whatsapp', 'call', 'walkin', 'web'],
+      },
+    ],
+  },
+  pipelineConfig: {
+    stages: [
+      {
+        key: 'ENQUIRY_RECEIVED',
+        label: 'Enquiry Received',
+        internalStatus: LeadStatus.NEW,
+        allowedNext: ['BOOKING_CONFIRMED', 'NOT_INTERESTED'],
+        terminal: false,
+        order: 0,
+      },
+      {
+        key: 'BOOKING_CONFIRMED',
+        label: 'Booking Confirmed',
+        internalStatus: LeadStatus.PENDING,
+        milestone: MilestoneKey.BOOKING_CONFIRMED,
+        allowedNext: ['SAMPLE_COLLECTED', 'NOT_INTERESTED'],
+        terminal: false,
+        order: 1,
+      },
+      {
+        key: 'SAMPLE_COLLECTED',
+        label: 'Sample Collected',
+        internalStatus: LeadStatus.QUALIFIED,
+        milestone: MilestoneKey.SAMPLE_COLLECTED,
+        allowedNext: ['REPORT_DELIVERED', 'NOT_INTERESTED'],
+        terminal: false,
+        order: 2,
+      },
+      {
+        key: 'REPORT_DELIVERED',
+        label: 'Report Delivered',
+        internalStatus: LeadStatus.WON,
+        milestone: MilestoneKey.REPORT_DELIVERED,
+        allowedNext: ['POST_REPORT_FOLLOWUP', 'COMPLETED'],
+        terminal: false,
+        order: 3,
+      },
+      {
+        key: 'POST_REPORT_FOLLOWUP',
+        label: 'Post-Report Follow-up',
+        internalStatus: LeadStatus.PENDING,
+        allowedNext: ['COMPLETED', 'NOT_INTERESTED'],
+        terminal: false,
+        order: 4,
+      },
+      {
+        key: 'COMPLETED',
+        label: 'Completed',
+        internalStatus: LeadStatus.WON,
+        allowedNext: [],
+        terminal: true,
+        order: 5,
+      },
+      {
+        key: 'NOT_INTERESTED',
+        label: 'Not Interested',
+        internalStatus: LeadStatus.LOST,
+        allowedNext: [],
+        terminal: true,
+        order: 6,
+      },
+    ],
+  },
+  followupRules: {
+    firstReminderMinutes: 30,
+    escalationMinutes: 180,
+    postReportFollowupDays: 3,
+    postReportFollowupNote: 'Follow up after report delivery to support next booking.',
+  },
+  themeConfig: {
+    accentColor: '#0f7a78',
+    sidebarTitle: 'Diagnostics LeadOps',
+  },
+  featureFlags: {
+    aiAssist: true,
+  },
+};
+
+export function getPresetDisplayConfig(preset: IndustryPreset): TenantDisplayConfig {
+  if (preset === IndustryPreset.DIAGNOSTICS_LAB) {
+    return diagnosticsDisplayConfig;
+  }
+
+  return genericDisplayConfig;
+}

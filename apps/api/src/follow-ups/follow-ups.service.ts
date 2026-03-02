@@ -1,10 +1,12 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import {
   ACTIVE_LEAD_STATUSES,
+  AuthUser,
   CreateFollowUpDto,
   DOMAIN_EVENTS,
   TodayFollowUp,
 } from '@leadops/shared';
+import { BranchScopeService } from '../access-control/branch-scope.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { getTenantContext } from '../tenant/tenant.store';
 import { TenantConfigService } from '../tenant/tenant-config.service';
@@ -18,9 +20,10 @@ export class FollowUpsService {
     private readonly tenantConfig: TenantConfigService,
     private readonly queue: QueueService,
     private readonly domainEvents: DomainEventsService,
+    private readonly branchScope: BranchScopeService,
   ) {}
 
-  async findToday(): Promise<TodayFollowUp[]> {
+  async findToday(user: AuthUser): Promise<TodayFollowUp[]> {
     const tenant = getTenantContext();
 
     const start = new Date();
@@ -42,6 +45,7 @@ export class FollowUpsService {
             name: true,
             phone: true,
             status: true,
+            branchId: true,
           },
         },
         user: {
@@ -54,13 +58,22 @@ export class FollowUpsService {
       orderBy: { scheduledAt: 'asc' },
     });
 
-    return followUps.map((item) => ({
-      ...item,
-      assignedUser: item.user,
-    })) as TodayFollowUp[];
+    return followUps
+      .filter((item) => {
+        try {
+          this.branchScope.ensureLeadAccess(user, item.lead);
+          return true;
+        } catch {
+          return false;
+        }
+      })
+      .map((item) => ({
+        ...item,
+        assignedUser: item.user,
+      })) as TodayFollowUp[];
   }
 
-  async create(dto: CreateFollowUpDto, actorId?: string): Promise<{ id: string }> {
+  async create(dto: CreateFollowUpDto, actor: AuthUser): Promise<{ id: string }> {
     const tenant = getTenantContext();
     const lead = await this.prisma.lead.findFirst({
       where: { id: dto.leadId, tenantId: tenant?.tenantId },
@@ -70,6 +83,8 @@ export class FollowUpsService {
       throw new NotFoundException('Lead not found');
     }
 
+    this.branchScope.ensureLeadAccess(actor, lead);
+
     const scheduledAt = await this.tenantConfig.normalizeToBusinessWindow(dto.scheduledAt);
 
     const followUp = await this.prisma.followUp.create({
@@ -77,6 +92,7 @@ export class FollowUpsService {
         tenantId: lead.tenantId,
         leadId: lead.id,
         assignedTo: dto.assignedTo,
+        kind: 'GENERAL',
         scheduledAt,
         note: dto.note,
       },
@@ -91,7 +107,7 @@ export class FollowUpsService {
       data: {
         tenantId: lead.tenantId,
         leadId: lead.id,
-        actorId: actorId ?? null,
+        actorId: actor.id,
         type: 'followup.scheduled',
         message: 'Follow-up scheduled',
       },
@@ -105,7 +121,7 @@ export class FollowUpsService {
     return { id: followUp.id };
   }
 
-  async markDone(id: string, actorId?: string): Promise<{ success: boolean }> {
+  async markDone(id: string, actor: AuthUser): Promise<{ success: boolean }> {
     const tenant = getTenantContext();
 
     const followUp = await this.prisma.followUp.findFirst({
@@ -116,6 +132,8 @@ export class FollowUpsService {
     if (!followUp) {
       throw new NotFoundException('Follow-up not found');
     }
+
+    this.branchScope.ensureLeadAccess(actor, followUp.lead);
 
     await this.prisma.followUp.update({
       where: { id },
@@ -129,7 +147,7 @@ export class FollowUpsService {
       data: {
         tenantId: followUp.tenantId,
         leadId: followUp.leadId,
-        actorId: actorId ?? null,
+        actorId: actor.id,
         type: 'followup.completed',
         message: 'Follow-up marked as done',
       },
@@ -155,6 +173,7 @@ export class FollowUpsService {
             tenantId: followUp.tenantId,
             leadId: followUp.leadId,
             assignedTo: followUp.assignedTo,
+            kind: 'GENERAL',
             scheduledAt: autoScheduled,
             note: 'Auto-generated to keep active lead follow-up continuity',
           },
