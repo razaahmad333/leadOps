@@ -62,10 +62,10 @@ export function TodayPage(): React.JSX.Element {
   return (
     <div className="space-y-5">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-        <div>
+        <div className="space-y-2 pt-2 sm:pt-3">
           <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Daily Queue</p>
-          <h1 className="mt-2 text-2xl font-bold">{dictionary.labels.todayFollowupsTitle}</h1>
-          <p className="mt-2 text-sm text-muted-foreground">
+          <h1 className="text-2xl font-bold">{dictionary.labels.todayFollowupsTitle}</h1>
+          <p className="text-sm text-muted-foreground">
             Ensure every active {dictionary.labels.leadSingular.toLowerCase()} gets timely attention.
           </p>
         </div>

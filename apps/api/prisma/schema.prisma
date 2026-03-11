@@ -45,6 +45,20 @@ model Tenant {
   @@map("tenants")
 }
 
+model Account {
+  id           String     @id @default(uuid())
+  email        String     @unique
+  phone        String?    @unique
+  passwordHash String     @map("password_hash")
+  status       UserStatus @default(ACTIVE)
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+
+  users User[]
+
+  @@map("accounts")
+}
+
 model TenantConfig {
   id            String   @id @default(uuid())
   tenantId      String   @unique @map("tenant_id")
@@ -69,10 +83,10 @@ model TenantConfig {
 model User {
   id           String   @id @default(uuid())
   tenantId     String   @map("tenant_id")
+  accountId    String   @map("account_id")
   email        String
   name         String
   phone        String?
-  passwordHash String   @map("password_hash")
   role         Role     @default(STAFF)
   isSuperAdmin Boolean  @default(false) @map("is_super_admin")
   isTenantAdmin Boolean @default(false) @map("is_tenant_admin")
@@ -81,6 +95,7 @@ model User {
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
+  account        Account            @relation(fields: [accountId], references: [id], onDelete: Cascade)
   tenant         Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   defaultBranch  Branch?            @relation("UserDefaultBranch", fields: [defaultBranchId], references: [id], onDelete: SetNull)
   followUps      FollowUp[]
@@ -89,8 +104,10 @@ model User {
   userRoles      UserRole[]
   branchScopes   UserBranchScope[]
 
+  @@unique([tenantId, accountId])
   @@unique([tenantId, email])
   @@index([tenantId, status])
+  @@index([accountId])
   @@map("users")
 }
 

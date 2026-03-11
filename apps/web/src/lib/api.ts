@@ -17,21 +17,21 @@ function token(): string | null {
 
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { skipAuth = false, ...rest } = options;
+  const bearer = skipAuth ? null : token();
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...(rest.headers as Record<string, string>),
   };
 
-  if (DEV_TENANT) {
+  // In authenticated SaaS mode, tenant context should come from the JWT tenant,
+  // not a dev-only fixed header, otherwise tenant switching gets pinned to the old tenant.
+  if (DEV_TENANT && !bearer) {
     headers['x-tenant-id'] = DEV_TENANT;
   }
 
-  if (!skipAuth) {
-    const bearer = token();
-    if (bearer) {
-      headers.Authorization = `Bearer ${bearer}`;
-    }
+  if (bearer) {
+    headers.Authorization = `Bearer ${bearer}`;
   }
 
   const response = await fetch(`${API_BASE}${path}`, {

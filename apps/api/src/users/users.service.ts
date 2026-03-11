@@ -4,7 +4,6 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import * as bcrypt from 'bcryptjs';
 import {
   BranchScopeInput,
   BranchScopeType,
@@ -16,6 +15,7 @@ import {
 } from '@leadops/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { AccessControlService } from '../access-control/access-control.service';
+import { AccountIdentityService } from '../accounts/account-identity.service';
 import { normalizePhoneNumber } from '../common/utils/phone.util';
 import { getTenantContext } from '../tenant/tenant.store';
 
@@ -24,6 +24,7 @@ export class UsersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly accessControl: AccessControlService,
+    private readonly accountIdentity: AccountIdentityService,
   ) {}
 
   async findAll(): Promise<TeamUser[]> {
@@ -69,12 +70,14 @@ export class UsersService {
   async create(dto: CreateUserDto): Promise<TeamUser> {
     const tenantId = getTenantContext()?.tenantId ?? '';
     await this.accessControl.ensureTenantInitialized(tenantId);
+    const normalizedEmail = dto.email.trim().toLowerCase();
+    const normalizedPhone = normalizePhoneNumber(dto.phone) || null;
 
     const existing = await this.prisma.user.findUnique({
       where: {
         tenantId_email: {
           tenantId,
-          email: dto.email,
+          email: normalizedEmail,
         },
       },
     });
@@ -93,14 +96,21 @@ export class UsersService {
       dto.isTenantAdmin ?? false,
     );
 
-    const passwordHash = await bcrypt.hash(dto.password, 10);
+    const account = await this.accountIdentity.findOrCreateAccount({
+      email: normalizedEmail,
+      phone: normalizedPhone,
+      password: dto.password,
+      requirePasswordForNew: true,
+      rejectPhoneLinkedToDifferentEmail: false,
+      missingPasswordMessage: 'Password is required for this MVP flow',
+    });
     const user = await this.prisma.user.create({
       data: {
         tenantId,
+        accountId: account.id,
         name: dto.name.trim(),
-        email: dto.email.trim().toLowerCase(),
-        phone: normalizePhoneNumber(dto.phone) || null,
-        passwordHash,
+        email: normalizedEmail,
+        phone: normalizedPhone,
         status: UserStatus.ACTIVE,
         isTenantAdmin: dto.isTenantAdmin ?? false,
       },
@@ -169,6 +179,10 @@ export class UsersService {
       throw new ForbiddenException('SUPER_ADMIN users must be managed separately');
     }
 
+    if (id === actorId && dto.status === UserStatus.INACTIVE) {
+      throw new BadRequestException('You cannot deactivate your own user');
+    }
+
     const nextIsTenantAdmin = dto.isTenantAdmin ?? existing.isTenantAdmin;
     const normalizedBranchScope = await this.normalizeBranchScope(
       tenantId,
@@ -217,17 +231,23 @@ export class UsersService {
       nextIsTenantAdmin,
     );
 
+    const normalizedPhone = dto.phone === undefined ? undefined : normalizePhoneNumber(dto.phone) || null;
+
     await this.prisma.user.update({
       where: { id },
       data: {
         name: dto.name?.trim(),
-        phone: dto.phone === undefined ? undefined : normalizePhoneNumber(dto.phone) || null,
+        phone: normalizedPhone,
         isTenantAdmin: nextIsTenantAdmin,
         status: dto.status as UserStatus | undefined,
         role: nextLegacyRole,
         defaultBranchId,
       },
     });
+
+    if (dto.phone !== undefined) {
+      await this.syncAccountPhone(existing.accountId, normalizedPhone);
+    }
 
     return this.findOne(id);
   }
@@ -242,10 +262,40 @@ export class UsersService {
       throw new NotFoundException('User not found');
     }
 
-    const passwordHash = await bcrypt.hash(password, 10);
-    await this.prisma.user.update({
-      where: { id },
-      data: { passwordHash },
+    await this.accountIdentity.resetPassword(user.accountId, password);
+  }
+
+  private async syncAccountPhone(accountId: string, phone: string | null | undefined): Promise<void> {
+    if (phone === undefined) {
+      return;
+    }
+
+    const existing = await this.prisma.account.findUnique({
+      where: { id: accountId },
+    });
+
+    if (!existing) {
+      throw new NotFoundException('Account not found');
+    }
+
+    if (phone && existing.phone && existing.phone !== phone) {
+      const conflicting = await this.prisma.account.findUnique({
+        where: { phone },
+      });
+
+      if (conflicting && conflicting.id !== accountId) {
+        throw new BadRequestException('This mobile number is already used by another account');
+      }
+    }
+
+    await this.prisma.account.update({
+      where: { id: accountId },
+      data: { phone },
+    });
+
+    await this.prisma.user.updateMany({
+      where: { accountId },
+      data: { phone },
     });
   }
 

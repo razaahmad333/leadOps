@@ -9,12 +9,22 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 
 export function LoginPage(): React.JSX.Element {
-  const { user, login, loginWithOtp, requestLoginOtp, defaultRoute } = useAuth();
+  const {
+    user,
+    login,
+    loginWithOtp,
+    requestLoginOtp,
+    pendingTenantSelection,
+    clearPendingTenantSelection,
+    selectTenant,
+    defaultRoute,
+  } = useAuth();
   const navigate = useNavigate();
   const showDevHints = import.meta.env.DEV;
 
-  const [phone, setPhone] = useState('+1-555-0101');
-  const [password, setPassword] = useState('Password123!');
+  const [identifier, setIdentifier] = useState(showDevHints ? 'owner@local.test' : '');
+  const [password, setPassword] = useState(showDevHints ? 'Password123!' : '');
+  const [otpPhone, setOtpPhone] = useState(showDevHints ? '+1-555-0101' : '');
   const [otpCode, setOtpCode] = useState('');
   const [verificationId, setVerificationId] = useState<string | null>(null);
   const [mode, setMode] = useState<'password' | 'otp'>('password');
@@ -35,8 +45,12 @@ export function LoginPage(): React.JSX.Element {
     setSubmitting(true);
 
     try {
-      await login(phone, password);
-      toast.success('Welcome back to HikmahOne');
+      const challenge = await login(identifier, password);
+      if (challenge) {
+        toast.success('Choose a tenant to continue');
+      } else {
+        toast.success('Welcome back to HikmahOne');
+      }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Unable to sign in');
     } finally {
@@ -48,7 +62,7 @@ export function LoginPage(): React.JSX.Element {
     setSubmitting(true);
 
     try {
-      const response = await requestLoginOtp(phone);
+      const response = await requestLoginOtp(otpPhone);
       setVerificationId(response.verificationId);
       if (response.devOtpCode) {
         setOtpCode(response.devOtpCode);
@@ -69,20 +83,16 @@ export function LoginPage(): React.JSX.Element {
     setSubmitting(true);
 
     try {
-      await loginWithOtp(phone, verificationId, otpCode);
-      toast.success('Logged in with OTP');
+      const challenge = await loginWithOtp(otpPhone, verificationId, otpCode);
+      if (challenge) {
+        toast.success('Choose a tenant to continue');
+      } else {
+        toast.success('Logged in with OTP');
+      }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'OTP verification failed');
     } finally {
       setSubmitting(false);
-    }
-  };
-
-  const onPhoneChange = (value: string): void => {
-    setPhone(value);
-    if (mode === 'otp') {
-      setVerificationId(null);
-      setOtpCode('');
     }
   };
 
@@ -95,6 +105,23 @@ export function LoginPage(): React.JSX.Element {
     }
 
     void requestOtp();
+  };
+
+  const chooseTenant = async (tenantId: string): Promise<void> => {
+    if (!pendingTenantSelection) {
+      return;
+    }
+
+    setSubmitting(true);
+
+    try {
+      await selectTenant(pendingTenantSelection.selectionToken, tenantId);
+      toast.success('Tenant selected');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Unable to select tenant');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -164,84 +191,136 @@ export function LoginPage(): React.JSX.Element {
               </button>
             </div>
 
-            <form
-              className="space-y-5"
-              onSubmit={mode === 'password' ? (event) => void onSubmit(event) : onOtpSubmit}
-            >
-              <div className="space-y-2">
-                <Label htmlFor="phone">Mobile Number</Label>
-                <Input
-                  id="phone"
-                  type="tel"
-                  autoComplete="tel"
-                  value={phone}
-                  onChange={(event) => onPhoneChange(event.target.value)}
-                  required
-                />
-              </div>
-
-              {mode === 'password' ? (
-                <div className="space-y-2">
-                  <Label htmlFor="password">Password</Label>
-                  <Input
-                    id="password"
-                    type="password"
-                    autoComplete="current-password"
-                    value={password}
-                    onChange={(event) => setPassword(event.target.value)}
-                    required
-                  />
-                </div>
-              ) : verificationId ? (
-                <div className="space-y-2">
-                  <Label htmlFor="otp">OTP Code</Label>
-                  <Input
-                    id="otp"
-                    inputMode="numeric"
-                    value={otpCode}
-                    onChange={(event) => setOtpCode(event.target.value)}
-                    placeholder="Enter the SMS code"
-                    required
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Enter the OTP sent to your mobile number. Request a new code if this one expires.
+            {pendingTenantSelection ? (
+              <div className="space-y-4">
+                <div className="rounded-2xl border border-white/70 bg-secondary/30 p-4">
+                  <p className="text-sm font-semibold">Choose a tenant</p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    This account has access to more than one workspace.
                   </p>
                 </div>
-              ) : null}
 
-              <Button type="submit" className="w-full" disabled={submitting}>
-                {submitting
-                  ? mode === 'password'
-                    ? 'Signing in...'
-                    : verificationId
-                      ? 'Verifying OTP...'
-                      : 'Sending OTP...'
-                  : mode === 'password'
-                    ? 'Sign in'
-                    : verificationId
-                      ? 'Verify OTP & Sign in'
-                      : 'Send OTP'}
-                <ArrowRight className="h-4 w-4" />
-              </Button>
+                <div className="space-y-2">
+                  {pendingTenantSelection.tenants.map((tenant) => (
+                    <Button
+                      key={tenant.tenantId}
+                      type="button"
+                      variant="outline"
+                      className="flex h-auto w-full items-center justify-between rounded-2xl px-4 py-3 text-left"
+                      disabled={submitting}
+                      onClick={() => void chooseTenant(tenant.tenantId)}
+                    >
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-semibold">{tenant.tenantName}</span>
+                        <span className="block truncate text-xs text-muted-foreground">{tenant.tenantSlug}</span>
+                      </span>
+                      <ArrowRight className="h-4 w-4 shrink-0" />
+                    </Button>
+                  ))}
+                </div>
 
-              {mode === 'otp' && verificationId ? (
                 <Button
                   type="button"
-                  variant="outline"
+                  variant="ghost"
                   className="w-full"
                   disabled={submitting}
-                  onClick={() => void requestOtp()}
+                  onClick={clearPendingTenantSelection}
                 >
-                  Resend OTP
+                  Back to sign in
                 </Button>
-              ) : null}
-            </form>
+              </div>
+            ) : (
+              <form
+                className="space-y-5"
+                onSubmit={mode === 'password' ? (event) => void onSubmit(event) : onOtpSubmit}
+              >
+                <div className="space-y-2">
+                  <Label htmlFor="login-identifier">
+                    {mode === 'password' ? 'Email or Mobile Number' : 'Mobile Number'}
+                  </Label>
+                  <Input
+                    id="login-identifier"
+                    type={mode === 'password' ? 'text' : 'tel'}
+                    autoComplete={mode === 'password' ? 'username' : 'tel'}
+                    placeholder={mode === 'password' ? 'name@company.com or +1-555-0101' : '+1-555-0101'}
+                    value={mode === 'password' ? identifier : otpPhone}
+                    onChange={(event) => {
+                      if (mode === 'password') {
+                        setIdentifier(event.target.value);
+                        return;
+                      }
+
+                      setOtpPhone(event.target.value);
+                      setVerificationId(null);
+                      setOtpCode('');
+                    }}
+                    required
+                  />
+                </div>
+
+                {mode === 'password' ? (
+                  <div className="space-y-2">
+                    <Label htmlFor="password">Password</Label>
+                    <Input
+                      id="password"
+                      type="password"
+                      autoComplete="current-password"
+                      value={password}
+                      onChange={(event) => setPassword(event.target.value)}
+                      required
+                    />
+                  </div>
+                ) : verificationId ? (
+                  <div className="space-y-2">
+                    <Label htmlFor="otp">OTP Code</Label>
+                    <Input
+                      id="otp"
+                      inputMode="numeric"
+                      value={otpCode}
+                      onChange={(event) => setOtpCode(event.target.value)}
+                      placeholder="Enter the SMS code"
+                      required
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Enter the OTP sent to your mobile number. Request a new code if this one expires.
+                    </p>
+                  </div>
+                ) : null}
+
+                <Button type="submit" className="w-full" disabled={submitting}>
+                  {submitting
+                    ? mode === 'password'
+                      ? 'Signing in...'
+                      : verificationId
+                        ? 'Verifying OTP...'
+                        : 'Sending OTP...'
+                    : mode === 'password'
+                      ? 'Sign in'
+                      : verificationId
+                        ? 'Verify OTP & Sign in'
+                        : 'Send OTP'}
+                  <ArrowRight className="h-4 w-4" />
+                </Button>
+
+                {mode === 'otp' && verificationId ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full"
+                    disabled={submitting}
+                    onClick={() => void requestOtp()}
+                  >
+                    Resend OTP
+                  </Button>
+                ) : null}
+              </form>
+            )}
 
             {showDevHints ? (
               <div className="mt-5 rounded-2xl border border-white/70 bg-secondary/30 p-4 text-xs text-muted-foreground">
-                <p>Super Admin: `+1-555-0001`</p>
-                <p>Demo Owner: `+1-555-0101`</p>
-                <p>Demo Staff: `+1-555-0102`</p>
+                <p>Super Admin: `admin@local.test` or `+1-555-0001`</p>
+                <p>Shared Owner: `owner@local.test` or `+1-555-0101`</p>
+                <p>Shared Staff: `staff@local.test` or `+1-555-0102`</p>
                 <p>Password for all users: `Password123!`</p>
               </div>
             ) : null}

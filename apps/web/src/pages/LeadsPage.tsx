@@ -461,6 +461,7 @@ export function LeadsPage(): React.JSX.Element {
     <div className="space-y-5">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div className="space-y-2 pt-2 sm:pt-3">
+          <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Pipeline</p>
           <h1 className="text-2xl font-bold">{dictionary.labels.leadPlural}</h1>
           <p className="text-sm text-muted-foreground">
             Track {leadSingularLower} stage, next follow-up, and activity timeline.
@@ -649,7 +650,7 @@ export function LeadsPage(): React.JSX.Element {
       </Card>
 
       <Sheet open={!!selectedLeadId} onOpenChange={(open) => !open && setSelectedLeadId(null)}>
-        <SheetContent className="border-white/80 bg-background/96 p-5 sm:p-6">
+        <SheetContent className="border-white/80 bg-card p-5 shadow-[0_28px_60px_-32px_rgba(15,23,42,0.45)] sm:p-6">
           <SheetHeader>
             <SheetTitle>{selectedLeadDetail?.lead.name ?? `${dictionary.labels.leadSingular} detail`}</SheetTitle>
             <SheetDescription>

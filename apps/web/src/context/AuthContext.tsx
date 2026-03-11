@@ -1,5 +1,11 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import type { AuthUser, LoginResponse, RequestLoginOtpResponse } from '@leadops/shared';
+import type {
+  AuthUser,
+  AuthFlowResponse,
+  LoginResponse,
+  RequestLoginOtpResponse,
+  TenantSelectionChallenge,
+} from '@leadops/shared';
 import { api } from '../lib/api';
 
 interface SessionState {
@@ -11,11 +17,15 @@ interface AuthContextValue {
   user: AuthUser | null;
   tenantName: string;
   isAuthenticated: boolean;
+  pendingTenantSelection: TenantSelectionChallenge | null;
   can: (permission: string) => boolean;
   defaultRoute: string;
-  login: (phone: string, password: string) => Promise<void>;
+  login: (identifier: string, password: string) => Promise<TenantSelectionChallenge | null>;
   requestLoginOtp: (phone: string) => Promise<RequestLoginOtpResponse>;
-  loginWithOtp: (phone: string, verificationId: string, otpCode: string) => Promise<void>;
+  loginWithOtp: (phone: string, verificationId: string, otpCode: string) => Promise<TenantSelectionChallenge | null>;
+  clearPendingTenantSelection: () => void;
+  selectTenant: (selectionToken: string, tenantId: string) => Promise<LoginResponse>;
+  switchTenant: (tenantId: string) => Promise<LoginResponse>;
   refreshUser: () => Promise<void>;
   logout: () => void;
 }
@@ -37,6 +47,7 @@ function readSession(): SessionState | null {
 
 export function AuthProvider({ children }: { children: ReactNode }): React.JSX.Element {
   const [session, setSession] = useState<SessionState | null>(readSession);
+  const [pendingTenantSelection, setPendingTenantSelection] = useState<TenantSelectionChallenge | null>(null);
 
   const persistSession = useCallback((next: SessionState | null): void => {
     if (!next) {
@@ -51,21 +62,34 @@ export function AuthProvider({ children }: { children: ReactNode }): React.JSX.E
 
   const applyLoginResponse = useCallback((response: LoginResponse): void => {
     localStorage.setItem('access_token', response.accessToken);
+    setPendingTenantSelection(null);
     persistSession({
       tenantName: response.tenantName,
       user: response.user,
     });
   }, [persistSession]);
 
-  const login = useCallback(async (phone: string, password: string): Promise<void> => {
-    const response = await api.post<LoginResponse>(
+  const applyAuthFlowResponse = useCallback((response: AuthFlowResponse): TenantSelectionChallenge | null => {
+    if (response.kind === 'authenticated') {
+      applyLoginResponse(response);
+      return null;
+    }
+
+    localStorage.removeItem('access_token');
+    persistSession(null);
+    setPendingTenantSelection(response);
+    return response;
+  }, [applyLoginResponse, persistSession]);
+
+  const login = useCallback(async (identifier: string, password: string): Promise<TenantSelectionChallenge | null> => {
+    const response = await api.post<AuthFlowResponse>(
       '/v1/auth/login',
-      { phone, password },
+      { identifier, password },
       { skipAuth: true },
     );
 
-    applyLoginResponse(response);
-  }, [applyLoginResponse]);
+    return applyAuthFlowResponse(response);
+  }, [applyAuthFlowResponse]);
 
   const requestLoginOtp = useCallback(async (phone: string): Promise<RequestLoginOtpResponse> => {
     return api.post<RequestLoginOtpResponse>(
@@ -75,14 +99,39 @@ export function AuthProvider({ children }: { children: ReactNode }): React.JSX.E
     );
   }, []);
 
-  const loginWithOtp = useCallback(async (phone: string, verificationId: string, otpCode: string): Promise<void> => {
-    const response = await api.post<LoginResponse>(
+  const loginWithOtp = useCallback(async (
+    phone: string,
+    verificationId: string,
+    otpCode: string,
+  ): Promise<TenantSelectionChallenge | null> => {
+    const response = await api.post<AuthFlowResponse>(
       '/v1/auth/forgot-password/verify-otp',
       { phone, verificationId, otpCode },
       { skipAuth: true },
     );
 
+    return applyAuthFlowResponse(response);
+  }, [applyAuthFlowResponse]);
+
+  const selectTenant = useCallback(async (selectionToken: string, tenantId: string): Promise<LoginResponse> => {
+    const response = await api.post<LoginResponse>(
+      '/v1/auth/select-tenant',
+      { selectionToken, tenantId },
+      { skipAuth: true },
+    );
+
     applyLoginResponse(response);
+    return response;
+  }, [applyLoginResponse]);
+
+  const switchTenant = useCallback(async (tenantId: string): Promise<LoginResponse> => {
+    const response = await api.post<LoginResponse>(
+      '/v1/auth/switch-tenant',
+      { tenantId },
+    );
+
+    applyLoginResponse(response);
+    return response;
   }, [applyLoginResponse]);
 
   const refreshUser = useCallback(async (): Promise<void> => {
@@ -107,8 +156,13 @@ export function AuthProvider({ children }: { children: ReactNode }): React.JSX.E
 
   const logout = useCallback((): void => {
     localStorage.removeItem('access_token');
+    setPendingTenantSelection(null);
     persistSession(null);
   }, [persistSession]);
+
+  const clearPendingTenantSelection = useCallback((): void => {
+    setPendingTenantSelection(null);
+  }, []);
 
   const can = useCallback(
     (permission: string): boolean => {
@@ -147,15 +201,32 @@ export function AuthProvider({ children }: { children: ReactNode }): React.JSX.E
       user: session?.user ?? null,
       tenantName: session?.tenantName ?? 'Tenant',
       isAuthenticated: !!session?.user,
+      pendingTenantSelection,
       can,
       defaultRoute,
       login,
       requestLoginOtp,
       loginWithOtp,
+      clearPendingTenantSelection,
+      selectTenant,
+      switchTenant,
       refreshUser,
       logout,
     }),
-    [can, defaultRoute, login, loginWithOtp, logout, refreshUser, requestLoginOtp, session],
+    [
+      can,
+      defaultRoute,
+      login,
+      loginWithOtp,
+      logout,
+      pendingTenantSelection,
+      refreshUser,
+      requestLoginOtp,
+      clearPendingTenantSelection,
+      selectTenant,
+      session,
+      switchTenant,
+    ],
   );
 
   useEffect(() => {

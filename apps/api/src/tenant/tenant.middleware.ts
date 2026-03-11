@@ -17,7 +17,7 @@ export class TenantMiddleware implements NestMiddleware {
       res.setHeader('x-request-id', requestId);
     }
 
-    if (this.isBypassPath(req.url)) {
+    if (this.isBypassPath(req.url) || this.isGlobalAuthPath(req.url)) {
       tenantStorage.run({ tenantId: 'system', tenantSlug: 'system', requestId }, next);
       return;
     }
@@ -27,6 +27,15 @@ export class TenantMiddleware implements NestMiddleware {
 
   private isBypassPath(url: string): boolean {
     return url.startsWith('/health') || url.startsWith('/metrics') || url.startsWith('/docs');
+  }
+
+  private isGlobalAuthPath(url: string): boolean {
+    const path = url.split('?')[0] ?? url;
+
+    return path === '/v1/auth/login'
+      || path === '/v1/auth/forgot-password/request-otp'
+      || path === '/v1/auth/forgot-password/verify-otp'
+      || path === '/v1/auth/select-tenant';
   }
 
   private async resolveTenant(req: any, requestId: string, next: () => void): Promise<void> {
@@ -44,10 +53,12 @@ export class TenantMiddleware implements NestMiddleware {
         tenant = await this.prisma.tenant.findFirst({ orderBy: { createdAt: 'asc' } });
       }
     } else {
+      let explicitTenantSignal = false;
       const host = (req.headers['host'] ?? '') as string;
       const subdomain = this.extractSubdomain(host);
 
       if (subdomain) {
+        explicitTenantSignal = true;
         tenant = await this.prisma.tenant.findUnique({ where: { slug: subdomain } });
       }
 
@@ -55,12 +66,27 @@ export class TenantMiddleware implements NestMiddleware {
         const headerTenant = req.headers['x-tenant-id'] as string | undefined;
 
         if (headerTenant) {
+          explicitTenantSignal = true;
           tenant = await this.prisma.tenant.findFirst({
             where: {
               OR: [{ id: headerTenant }, { slug: headerTenant }],
             },
           });
         }
+      }
+
+      if (!tenant) {
+        const tokenTenantId = this.extractTenantIdFromBearer(req.headers['authorization'] as string | undefined);
+
+        if (tokenTenantId) {
+          explicitTenantSignal = true;
+          tenant = await this.prisma.tenant.findUnique({ where: { id: tokenTenantId } });
+        }
+      }
+
+      if (!tenant && !explicitTenantSignal) {
+        tenantStorage.run({ tenantId: 'system', tenantSlug: 'system', requestId }, next);
+        return;
       }
     }
 
@@ -92,5 +118,29 @@ export class TenantMiddleware implements NestMiddleware {
     }
 
     return null;
+  }
+
+  private extractTenantIdFromBearer(authorization: string | undefined): string | null {
+    if (!authorization?.startsWith('Bearer ')) {
+      return null;
+    }
+
+    const token = authorization.slice('Bearer '.length).trim();
+    const parts = token.split('.');
+    if (parts.length !== 3 || !parts[1]) {
+      return null;
+    }
+
+    try {
+      const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8')) as {
+        tenantId?: string;
+      };
+
+      return typeof payload.tenantId === 'string' && payload.tenantId.length > 0
+        ? payload.tenantId
+        : null;
+    } catch {
+      return null;
+    }
   }
 }

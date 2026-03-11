@@ -190,10 +190,10 @@ export function RolesPage(): React.JSX.Element {
   return (
     <div className="space-y-5">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        <div>
+        <div className="space-y-2 pt-2 sm:pt-3">
           <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Access Design</p>
-          <h1 className="mt-2 text-2xl font-bold">Roles</h1>
-          <p className="mt-2 text-sm text-muted-foreground">
+          <h1 className="text-2xl font-bold">Roles</h1>
+          <p className="text-sm text-muted-foreground">
             Build permission bundles once, then assign them across the tenant.
           </p>
         </div>

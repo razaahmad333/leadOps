@@ -25,10 +25,10 @@ export function PermissionsCatalogPage(): React.JSX.Element {
   return (
     <div className="space-y-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
+        <div className="space-y-2 pt-2 sm:pt-3">
           <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Reference</p>
-          <h1 className="mt-2 text-2xl font-bold">Permissions</h1>
-          <p className="mt-2 text-sm text-muted-foreground">
+          <h1 className="text-2xl font-bold">Permissions</h1>
+          <p className="text-sm text-muted-foreground">
             The live permission catalog used by roles, tenant admin access, and API guards.
           </p>
         </div>

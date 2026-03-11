@@ -11,7 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Skeleton } from '../components/ui/skeleton';
 
 export function SettingsPage(): React.JSX.Element {
-  const { can } = useAuth();
+  const { can, user } = useAuth();
   const { dictionary, profile } = useTenant();
   const [settings, setSettings] = useState<TenantSettings | null>(null);
   const [loading, setLoading] = useState(true);
@@ -29,10 +29,10 @@ export function SettingsPage(): React.JSX.Element {
 
   return (
     <div className="space-y-5">
-      <div>
+      <div className="space-y-2 pt-2 sm:pt-3">
         <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Workspace Config</p>
-        <h1 className="mt-2 text-2xl font-bold">Settings</h1>
-        <p className="mt-2 text-sm text-muted-foreground">
+        <h1 className="text-2xl font-bold">Settings</h1>
+        <p className="text-sm text-muted-foreground">
           Pipeline stages, reminder rules, templates, and display configuration.
         </p>
       </div>
@@ -81,6 +81,22 @@ export function SettingsPage(): React.JSX.Element {
               </p>
               <Button asChild variant="outline">
                 <Link to="/settings/permissions">Open Permissions</Link>
+              </Button>
+            </CardContent>
+          </Card>
+        ) : null}
+
+        {(user?.isTenantAdmin || user?.isSuperAdmin) && can('settings.view') ? (
+          <Card className="rounded-3xl border-white/80 bg-card/95">
+            <CardHeader>
+              <CardTitle>Enquiry Builder</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                Add custom enquiry fields and manage test packages for this tenant.
+              </p>
+              <Button asChild variant="outline">
+                <Link to="/settings/intake">Open Builder</Link>
               </Button>
             </CardContent>
           </Card>

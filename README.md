@@ -38,8 +38,8 @@ pnpm db:migrate
 pnpm db:seed
 
 # 5) Choose tenant resolution mode
-# Option A (single tenant): set DEPLOYMENT_MODE=single + SINGLE_TENANT_ID=<seeded tenant id> in apps/api/.env
-# Option B (multi tenant dev): set DEPLOYMENT_MODE=multi in apps/api/.env and set VITE_TENANT_ID=<seeded tenant id> in apps/web/.env
+# Option A (single tenant / dedicated): set DEPLOYMENT_MODE=single + SINGLE_TENANT_ID=<seeded tenant id> in apps/api/.env
+# Option B (shared multi-tenant SaaS): set DEPLOYMENT_MODE=multi in apps/api/.env
 
 # 6) Run everything (api + worker + web)
 pnpm dev
@@ -53,10 +53,13 @@ pnpm dev
 - Metrics: `http://localhost:3000/metrics`
 
 ## Local Credentials
-- Demo Lab OWNER: `owner+lab@local.test` / `Password123!`
-- Demo Lab STAFF: `staff+lab@local.test` / `Password123!`
-- Demo Generic OWNER: `owner+generic@local.test` / `Password123!`
-- Demo Generic STAFF: `staff+generic@local.test` / `Password123!`
+- Shared OWNER (Demo Lab + Demo Generic): `owner@local.test` or `+1-555-0101` / `Password123!`
+- Shared STAFF (Demo Lab + Demo Generic): `staff@local.test` or `+1-555-0102` / `Password123!`
+- SUPER_ADMIN (Demo Lab membership): `admin@local.test` or `+1-555-0001` / `Password123!`
+
+## Platform Admin
+- Sign in as `admin@local.test` and open `/platform/admin`
+- Use it to create tenants, seed the first tenant admin, and grant additional tenant access to existing or new accounts
 
 ## Scripts
 - `pnpm dev`: run API + worker + web
@@ -73,7 +76,7 @@ pnpm dev
 3. Dashboard cards switch for Demo Lab (`Enquiries Today`, `Bookings Today`, `Post-Report Follow-ups Due`, etc.).
 4. Login as Demo Generic: UI remains generic LeadOps labels and generic intake fields.
 5. Create lead/enquiry works and enforces `nextFollowUpAt`.
-6. Tenant context works via `GET /v1/tenant/me` and `DEPLOYMENT_MODE=multi` + `VITE_TENANT_ID` (or single-tenant env).
+6. Tenant context works via `GET /v1/tenant/me` in both `DEPLOYMENT_MODE=multi` (token or tenant slug driven) and `DEPLOYMENT_MODE=single`.
 7. Change stage to `REPORT_DELIVERED`: post-report follow-up task is created/scheduled from tenant config rules.
 8. Worker starts and processes reminder jobs.
 

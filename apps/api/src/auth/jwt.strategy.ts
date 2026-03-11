@@ -9,9 +9,11 @@ import { getTenantContext } from '../tenant/tenant.store';
 
 interface JwtPayload {
   sub: string;
+  accountId: string;
   email: string;
   role: string;
   tenantId: string;
+  kind?: string;
 }
 
 @Injectable()
@@ -45,6 +47,14 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
 
     if (user.status === UserStatus.INACTIVE) {
       throw new UnauthorizedException('User is inactive');
+    }
+
+    if (payload.kind && payload.kind !== 'access') {
+      throw new UnauthorizedException('Invalid access token');
+    }
+
+    if (payload.accountId !== user.accountId) {
+      throw new UnauthorizedException('Token account does not match user');
     }
 
     return this.accessControl.buildAuthUser(

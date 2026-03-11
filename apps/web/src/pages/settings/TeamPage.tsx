@@ -15,6 +15,7 @@ import {
   UserCog,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useAuth } from '../../context/AuthContext';
 import { useTenant } from '../../context/TenantContext';
 import { api } from '../../lib/api';
 import { Badge } from '../../components/ui/badge';
@@ -87,6 +88,7 @@ function statusVariant(status: UserStatus): 'success' | 'secondary' {
 }
 
 export function TeamPage(): React.JSX.Element {
+  const { user: currentUser } = useAuth();
   const { dictionary } = useTenant();
   const adminLabel = dictionary.isDiagnosticsLab ? 'Lab Admin' : 'Tenant Admin';
 
@@ -202,6 +204,14 @@ export function TeamPage(): React.JSX.Element {
       return 'Select at least one branch for a scoped user.';
     }
 
+    if (
+      editingUser
+      && currentUser?.id === editingUser.id
+      && form.status === USER_STATUS.INACTIVE
+    ) {
+      return 'You cannot deactivate your own user.';
+    }
+
     return null;
   };
 
@@ -261,6 +271,11 @@ export function TeamPage(): React.JSX.Element {
     const nextStatus =
       user.status === USER_STATUS.ACTIVE ? USER_STATUS.INACTIVE : USER_STATUS.ACTIVE;
 
+    if (currentUser?.id === user.id && nextStatus === USER_STATUS.INACTIVE) {
+      toast.error('You cannot deactivate your own user');
+      return;
+    }
+
     try {
       await api.patch<TeamUser>(`/v1/users/${user.id}`, {
         status: nextStatus,
@@ -275,10 +290,8 @@ export function TeamPage(): React.JSX.Element {
   return (
     <div className="space-y-5">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        <div className="space-y-2">
-          <p className="text-[11px] font-semibold uppercase leading-none tracking-[0.18em] text-muted-foreground">
-            Access Control
-          </p>
+        <div className="space-y-2 pt-2 sm:pt-3">
+          <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Access Control</p>
           <h1 className="text-2xl font-bold">Team</h1>
           <p className="text-sm text-muted-foreground">
             Manage tenant users, scoped access, and the {adminLabel.toLowerCase()} full-access flag.
@@ -373,7 +386,17 @@ export function TeamPage(): React.JSX.Element {
                             <Pencil className="h-4 w-4" />
                             Edit
                           </Button>
-                          <Button variant="secondary" size="sm" onClick={() => void toggleStatus(user)}>
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            disabled={currentUser?.id === user.id && user.status === USER_STATUS.ACTIVE}
+                            title={
+                              currentUser?.id === user.id && user.status === USER_STATUS.ACTIVE
+                                ? 'You cannot deactivate your own user'
+                                : undefined
+                            }
+                            onClick={() => void toggleStatus(user)}
+                          >
                             {user.status === USER_STATUS.ACTIVE ? 'Deactivate' : 'Activate'}
                           </Button>
                         </div>
@@ -436,7 +459,17 @@ export function TeamPage(): React.JSX.Element {
                                 <Button variant="outline" size="sm" onClick={() => openEditDialog(user)}>
                                   <Pencil className="h-4 w-4" />
                                 </Button>
-                                <Button variant="secondary" size="sm" onClick={() => void toggleStatus(user)}>
+                                <Button
+                                  variant="secondary"
+                                  size="sm"
+                                  disabled={currentUser?.id === user.id && user.status === USER_STATUS.ACTIVE}
+                                  title={
+                                    currentUser?.id === user.id && user.status === USER_STATUS.ACTIVE
+                                      ? 'You cannot deactivate your own user'
+                                      : undefined
+                                  }
+                                  onClick={() => void toggleStatus(user)}
+                                >
                                   {user.status === USER_STATUS.ACTIVE ? 'Deactivate' : 'Activate'}
                                 </Button>
                               </div>
@@ -518,7 +551,12 @@ export function TeamPage(): React.JSX.Element {
                   }
                 >
                   <option value={USER_STATUS.ACTIVE}>ACTIVE</option>
-                  <option value={USER_STATUS.INACTIVE}>INACTIVE</option>
+                  <option
+                    value={USER_STATUS.INACTIVE}
+                    disabled={!!editingUser && currentUser?.id === editingUser.id}
+                  >
+                    INACTIVE
+                  </option>
                 </Select>
               </div>
             )}

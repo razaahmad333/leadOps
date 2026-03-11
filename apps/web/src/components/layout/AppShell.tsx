@@ -16,6 +16,7 @@ import {
   Users,
 } from 'lucide-react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
 import { useAuth } from '../../context/AuthContext';
 import { useTenant } from '../../context/TenantContext';
 import { Button } from '../ui/button';
@@ -42,10 +43,31 @@ interface NavItem {
   mobileLabel: string;
   icon: React.ComponentType<{ className?: string }>;
   permission: string;
+  superAdminOnly?: boolean;
+}
+
+function resolveDefaultRouteForPermissions(permissions: string[]): string {
+  if (permissions.includes('dashboard.view')) {
+    return '/owner/dashboard';
+  }
+
+  if (permissions.includes('followups.view')) {
+    return '/staff/today';
+  }
+
+  if (permissions.includes('enquiries.view')) {
+    return '/leads';
+  }
+
+  if (permissions.includes('settings.view')) {
+    return '/settings';
+  }
+
+  return '/login';
 }
 
 export function AppShell(): React.JSX.Element {
-  const { user, logout, can, defaultRoute } = useAuth();
+  const { user, logout, switchTenant, can, defaultRoute } = useAuth();
   const { dictionary, loading, profile } = useTenant();
   const navigate = useNavigate();
 
@@ -104,15 +126,38 @@ export function AppShell(): React.JSX.Element {
         icon: Settings,
         permission: 'settings.view',
       },
+      {
+        to: '/platform/admin',
+        label: 'Platform Admin',
+        mobileLabel: 'Admin',
+        icon: ShieldCheck,
+        permission: 'settings.view',
+        superAdminOnly: true,
+      },
     ],
     [dictionary.labels.dashboardTitle, dictionary.labels.leadPlural, dictionary.labels.todayFollowupsTitle],
   );
 
   const visibleNavItems = useMemo(
-    () => navItems.filter((item) => user && can(item.permission)),
+    () =>
+      navItems.filter((item) => {
+        if (!user || !can(item.permission)) {
+          return false;
+        }
+
+        if (item.superAdminOnly && !user.isSuperAdmin) {
+          return false;
+        }
+
+        return true;
+      }),
     [can, navItems, user],
   );
   const mobilePrimaryNav = useMemo(() => visibleNavItems.slice(0, 4), [visibleNavItems]);
+  const alternateTenants = useMemo(
+    () => (user?.availableTenants ?? []).filter((tenant) => tenant.tenantId !== user?.tenantId),
+    [user?.availableTenants, user?.tenantId],
+  );
 
   const handleLogout = (): void => {
     logout();
@@ -121,6 +166,19 @@ export function AppShell(): React.JSX.Element {
 
   const handleHome = (): void => {
     void navigate(defaultRoute, { replace: true });
+  };
+
+  const handleTenantSwitch = (tenantId: string): void => {
+    void (async () => {
+      try {
+        const response = await switchTenant(tenantId);
+        await navigate(resolveDefaultRouteForPermissions(response.user.effectivePermissions), {
+          replace: true,
+        });
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : 'Unable to switch tenant');
+      }
+    })();
   };
 
   const accentStyle = dictionary.theme?.accentColor
@@ -301,6 +359,11 @@ export function AppShell(): React.JSX.Element {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
+                    {alternateTenants.map((tenant) => (
+                      <DropdownMenuItem key={tenant.tenantId} onClick={() => handleTenantSwitch(tenant.tenantId)}>
+                        Switch to {tenant.tenantName}
+                      </DropdownMenuItem>
+                    ))}
                     <DropdownMenuItem onClick={handleLogout}>Logout</DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -340,6 +403,11 @@ export function AppShell(): React.JSX.Element {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
+                      {alternateTenants.map((tenant) => (
+                        <DropdownMenuItem key={tenant.tenantId} onClick={() => handleTenantSwitch(tenant.tenantId)}>
+                          Switch to {tenant.tenantName}
+                        </DropdownMenuItem>
+                      ))}
                       <DropdownMenuItem onClick={handleLogout}>Logout</DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>

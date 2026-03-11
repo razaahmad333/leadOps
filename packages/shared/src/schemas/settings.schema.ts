@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { CustomEnquiryFieldSchema, TestPackageSchema } from './tenant.schema';
 
 export const TenantSettingsSchema = z.object({
   timezone: z.string(),
@@ -20,3 +21,14 @@ export const TenantSettingsSchema = z.object({
 });
 
 export type TenantSettings = z.infer<typeof TenantSettingsSchema>;
+
+export const TenantIntakeConfigSchema = z.object({
+  customEnquiryFields: z.array(CustomEnquiryFieldSchema),
+  testPackages: z.array(TestPackageSchema),
+});
+
+export type TenantIntakeConfig = z.infer<typeof TenantIntakeConfigSchema>;
+
+export const UpdateTenantIntakeConfigSchema = TenantIntakeConfigSchema;
+
+export type UpdateTenantIntakeConfigDto = z.infer<typeof UpdateTenantIntakeConfigSchema>;

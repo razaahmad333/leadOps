@@ -137,6 +137,8 @@ const GENERIC_FALLBACK: TenantProfile = {
     featureFlags: {
       aiAssist: true,
     },
+    customEnquiryFields: [],
+    testPackages: [],
   },
 };
 

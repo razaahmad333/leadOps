@@ -17,6 +17,7 @@ import { HealthModule } from './health/health.module';
 import { IntegrationsModule } from './integrations/integrations.module';
 import { LeadsModule } from './leads/leads.module';
 import { PermissionsModule } from './permissions/permissions.module';
+import { PlatformAdminModule } from './platform-admin/platform-admin.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { QueueModule } from './queue/queue.module';
 import { RolesModule } from './roles/roles.module';
@@ -48,6 +49,7 @@ import { UsersModule } from './users/users.module';
     DashboardModule,
     SettingsModule,
     PermissionsModule,
+    PlatformAdminModule,
     RolesModule,
     UsersModule,
     BranchesModule,

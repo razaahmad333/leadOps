@@ -56,6 +56,27 @@ export const LeadFieldConfigSchema = z.object({
 
 export type LeadFieldConfig = z.infer<typeof LeadFieldConfigSchema>;
 
+export const CustomEnquiryFieldSchema = LeadFieldConfigSchema.extend({
+  key: z
+    .string()
+    .min(2)
+    .max(40)
+    .regex(/^[a-z][a-zA-Z0-9_]*$/, 'Use letters, numbers, and underscore. Must start with a lowercase letter.'),
+  label: z.string().min(2).max(80),
+  section: z.literal('intake').default('intake'),
+});
+
+export type CustomEnquiryField = z.infer<typeof CustomEnquiryFieldSchema>;
+
+export const TestPackageSchema = z.object({
+  id: z.string(),
+  name: z.string().min(1).max(120),
+  description: z.string().max(400).default(''),
+  enabled: z.boolean().default(true),
+});
+
+export type TestPackage = z.infer<typeof TestPackageSchema>;
+
 export const PipelineStageSchema = z.object({
   key: z.string(),
   label: z.string(),
@@ -99,6 +120,8 @@ export const TenantDisplayConfigSchema = z.object({
   followupRules: FollowupRulesSchema,
   themeConfig: ThemeConfigSchema.optional(),
   featureFlags: z.record(z.boolean()).default({}),
+  customEnquiryFields: z.array(CustomEnquiryFieldSchema).default([]),
+  testPackages: z.array(TestPackageSchema).default([]),
 });
 
 export type TenantDisplayConfig = z.infer<typeof TenantDisplayConfigSchema>;

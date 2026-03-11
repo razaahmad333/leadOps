@@ -1,6 +1,7 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Tenant } from '@prisma/client';
 import {
+  CustomEnquiryField,
   FollowupRules,
   IndustryPreset,
   LeadStatus,
@@ -8,8 +9,11 @@ import {
   PipelineStage,
   TenantDisplayConfig,
   TenantDisplayConfigSchema,
+  TenantIntakeConfig,
   TenantProfile,
   TenantSettings,
+  TestPackage,
+  UpdateTenantIntakeConfigDto,
 } from '@leadops/shared';
 import { fromZonedTime, toZonedTime } from 'date-fns-tz';
 import { PrismaService } from '../prisma/prisma.service';
@@ -145,6 +149,47 @@ export class TenantConfigService {
     };
   }
 
+  async getIntakeConfig(tenantId?: string): Promise<TenantIntakeConfig> {
+    const profile = await this.getTenantProfile(tenantId);
+
+    return {
+      customEnquiryFields: profile.displayConfig.customEnquiryFields,
+      testPackages: profile.displayConfig.testPackages,
+    };
+  }
+
+  async updateIntakeConfig(
+    input: UpdateTenantIntakeConfigDto,
+    tenantId?: string,
+  ): Promise<TenantIntakeConfig> {
+    const profile = await this.getTenantProfile(tenantId);
+
+    const normalizedCustomFields = this.normalizeCustomEnquiryFields(input.customEnquiryFields);
+    const normalizedTestPackages = this.normalizeTestPackages(input.testPackages);
+
+    this.validateCustomFieldCollisions(profile.displayConfig, normalizedCustomFields);
+    this.validateRequiredTestPackageAvailability(profile.displayConfig, normalizedTestPackages);
+
+    const nextDisplayConfig = this.applyDerivedIntakeConfig({
+      ...profile.displayConfig,
+      customEnquiryFields: normalizedCustomFields,
+      testPackages: normalizedTestPackages,
+    });
+
+    await this.persistTenantDisplayConfig({
+      tenantId: profile.tenantId,
+      displayConfig: nextDisplayConfig,
+      industryPreset: profile.industryPreset,
+    });
+
+    this.invalidate(profile.tenantId);
+
+    return {
+      customEnquiryFields: nextDisplayConfig.customEnquiryFields,
+      testPackages: nextDisplayConfig.testPackages,
+    };
+  }
+
   async getDefaultStage(tenantId?: string): Promise<PipelineStage> {
     const config = await this.getDisplayConfig(tenantId);
     const stages = [...config.pipelineConfig.stages].sort((a, b) => a.order - b.order);
@@ -227,17 +272,17 @@ export class TenantConfigService {
     const base = getPresetDisplayConfig(preset);
 
     if (!overrideConfig || typeof overrideConfig !== 'object') {
-      return base;
+      return this.applyDerivedIntakeConfig(base);
     }
 
     const merged = this.deepMerge(base, overrideConfig as Record<string, unknown>);
     const parsed = TenantDisplayConfigSchema.safeParse(merged);
 
     if (!parsed.success) {
-      return base;
+      return this.applyDerivedIntakeConfig(base);
     }
 
-    return parsed.data;
+    return this.applyDerivedIntakeConfig(parsed.data);
   }
 
   private deepMerge<T extends Record<string, unknown>>(target: T, source: Record<string, unknown>): T {
@@ -322,6 +367,200 @@ export class TenantConfigService {
         featureFlags: mergedDisplayConfig.featureFlags,
       },
     });
+  }
+
+  private async persistTenantDisplayConfig(input: {
+    tenantId: string;
+    displayConfig: TenantDisplayConfig;
+    industryPreset: IndustryPreset;
+  }): Promise<void> {
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: input.tenantId },
+      include: { config: true },
+    });
+
+    if (!tenant) {
+      throw new NotFoundException('Tenant not found');
+    }
+
+    const configVersion = tenant.config?.configVersion ?? 1;
+    const timezone = tenant.config?.timezone ?? 'Asia/Jakarta';
+    const businessStart = tenant.config?.businessStart ?? '09:00';
+    const businessEnd = tenant.config?.businessEnd ?? '18:00';
+
+    await this.persistDisplayConfigIfNeeded(
+      tenant,
+      tenant.config?.displayConfig,
+      input.displayConfig,
+      input.industryPreset,
+      configVersion,
+      timezone,
+      businessStart,
+      businessEnd,
+    );
+  }
+
+  private applyDerivedIntakeConfig(config: TenantDisplayConfig): TenantDisplayConfig {
+    const normalizedCustomFields = this.normalizeCustomEnquiryFields(config.customEnquiryFields);
+    const normalizedTestPackages = this.normalizeTestPackages(
+      this.resolveTestPackages(config.testPackages, config.leadFieldsConfig.fields),
+    );
+    const customFieldKeys = new Set(normalizedCustomFields.map((field) => field.key));
+
+    const baseFields = config.leadFieldsConfig.fields.filter((field) => !customFieldKeys.has(field.key));
+    const testFieldIndex = baseFields.findIndex(
+      (field) => field.key === 'testOrPackage' && field.type === 'select',
+    );
+
+    if (testFieldIndex >= 0) {
+      const enabledTestPackages = normalizedTestPackages
+        .filter((pkg) => pkg.enabled)
+        .map((pkg) => pkg.name.trim())
+        .filter((name) => name.length > 0);
+
+      if (enabledTestPackages.length > 0 || normalizedTestPackages.length > 0) {
+        baseFields[testFieldIndex] = {
+          ...baseFields[testFieldIndex],
+          options: enabledTestPackages,
+        };
+      }
+    }
+
+    return {
+      ...config,
+      customEnquiryFields: normalizedCustomFields,
+      testPackages: normalizedTestPackages,
+      leadFieldsConfig: {
+        ...config.leadFieldsConfig,
+        fields: [...baseFields, ...normalizedCustomFields],
+      },
+    };
+  }
+
+  private resolveTestPackages(
+    configuredPackages: TestPackage[],
+    leadFields: TenantDisplayConfig['leadFieldsConfig']['fields'],
+  ): TestPackage[] {
+    if (configuredPackages.length > 0) {
+      return configuredPackages;
+    }
+
+    const testField = leadFields.find((field) => field.key === 'testOrPackage' && field.type === 'select');
+    if (!testField?.options?.length) {
+      return [];
+    }
+
+    return testField.options.map((option, index) => ({
+      id: this.slugify(option) || `test-package-${index + 1}`,
+      name: option,
+      description: '',
+      enabled: true,
+    }));
+  }
+
+  private normalizeCustomEnquiryFields(fields: CustomEnquiryField[]): CustomEnquiryField[] {
+    const seenKeys = new Set<string>();
+
+    return fields.map((field, index) => {
+      const key = field.key.trim();
+
+      if (!key || seenKeys.has(key)) {
+        throw new BadRequestException(
+          `Duplicate or invalid enquiry field key at position ${index + 1}`,
+        );
+      }
+
+      seenKeys.add(key);
+
+      if (field.type === 'select' && (!field.options || field.options.length === 0)) {
+        throw new BadRequestException(`Select field "${key}" must include at least one option`);
+      }
+
+      return {
+        ...field,
+        key,
+        label: field.label.trim(),
+        placeholder: field.placeholder?.trim() || undefined,
+        section: 'intake',
+        options:
+          field.type === 'select'
+            ? (field.options ?? [])
+              .map((option) => option.trim())
+              .filter((option, optionIndex, list) => option.length > 0 && list.indexOf(option) === optionIndex)
+            : undefined,
+      };
+    });
+  }
+
+  private normalizeTestPackages(packages: TestPackage[]): TestPackage[] {
+    const seenIds = new Set<string>();
+
+    return packages.map((pkg, index) => {
+      const name = pkg.name.trim();
+      const normalizedId = (pkg.id || this.slugify(name) || `test-package-${index + 1}`).trim();
+
+      if (!name) {
+        throw new BadRequestException(`Test package at position ${index + 1} must have a name`);
+      }
+
+      if (!normalizedId || seenIds.has(normalizedId)) {
+        throw new BadRequestException(`Duplicate or invalid test package id at position ${index + 1}`);
+      }
+
+      seenIds.add(normalizedId);
+
+      return {
+        id: normalizedId,
+        name,
+        description: pkg.description.trim(),
+        enabled: pkg.enabled,
+      };
+    });
+  }
+
+  private validateCustomFieldCollisions(
+    displayConfig: TenantDisplayConfig,
+    customFields: CustomEnquiryField[],
+  ): void {
+    const existingCustomKeys = new Set(displayConfig.customEnquiryFields.map((field) => field.key));
+    const reservedKeys = new Set(
+      displayConfig.leadFieldsConfig.fields
+        .map((field) => field.key)
+        .filter((key) => !existingCustomKeys.has(key)),
+    );
+
+    const conflicts = customFields.map((field) => field.key).filter((key) => reservedKeys.has(key));
+    if (conflicts.length > 0) {
+      throw new BadRequestException(
+        `These enquiry field keys are reserved and cannot be reused: ${conflicts.join(', ')}`,
+      );
+    }
+  }
+
+  private validateRequiredTestPackageAvailability(
+    displayConfig: TenantDisplayConfig,
+    testPackages: TestPackage[],
+  ): void {
+    const testField = displayConfig.leadFieldsConfig.fields.find(
+      (field) => field.key === 'testOrPackage' && field.type === 'select' && field.required,
+    );
+
+    if (!testField) {
+      return;
+    }
+
+    const enabledCount = testPackages.filter((pkg) => pkg.enabled).length;
+    if (enabledCount === 0) {
+      throw new BadRequestException('At least one test package must stay enabled');
+    }
+  }
+
+  private slugify(value: string): string {
+    return value
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/(^-|-$)/g, '');
   }
 
   private parseTime(value: string): [number, number] {

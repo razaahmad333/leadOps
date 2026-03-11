@@ -1,11 +1,16 @@
 import { Body, Controller, Get, HttpCode, HttpStatus, Post } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import {
+  AuthFlowResponse,
   AuthUser,
   LoginDto,
   LoginSchema,
   RequestLoginOtpDto,
   RequestLoginOtpSchema,
+  SelectTenantDto,
+  SelectTenantSchema,
+  SwitchTenantDto,
+  SwitchTenantSchema,
   VerifyLoginOtpDto,
   VerifyLoginOtpSchema,
 } from '@leadops/shared';
@@ -22,10 +27,10 @@ export class AuthController {
   @Public()
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Login and receive a JWT' })
+  @ApiOperation({ summary: 'Login with email or mobile number and receive a JWT' })
   @ApiResponse({ status: 200, description: 'Login successful' })
   @ApiResponse({ status: 401, description: 'Invalid credentials' })
-  login(@Body(new ZodValidationPipe(LoginSchema)) dto: LoginDto) {
+  login(@Body(new ZodValidationPipe(LoginSchema)) dto: LoginDto): Promise<AuthFlowResponse> {
     return this.authService.login(dto);
   }
 
@@ -43,8 +48,26 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Verify an OTP and login without a password' })
   @ApiResponse({ status: 200, description: 'OTP verified and login successful' })
-  verifyLoginOtp(@Body(new ZodValidationPipe(VerifyLoginOtpSchema)) dto: VerifyLoginOtpDto) {
+  verifyLoginOtp(@Body(new ZodValidationPipe(VerifyLoginOtpSchema)) dto: VerifyLoginOtpDto): Promise<AuthFlowResponse> {
     return this.authService.loginWithOtp(dto);
+  }
+
+  @Public()
+  @Post('select-tenant')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Exchange a tenant selection token for a tenant-scoped session' })
+  selectTenant(@Body(new ZodValidationPipe(SelectTenantSchema)) dto: SelectTenantDto) {
+    return this.authService.selectTenant(dto);
+  }
+
+  @Post('switch-tenant')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Switch the authenticated account into another tenant membership' })
+  switchTenant(
+    @CurrentUser() user: { accountId: string },
+    @Body(new ZodValidationPipe(SwitchTenantSchema)) dto: SwitchTenantDto,
+  ) {
+    return this.authService.switchTenant(user.accountId, dto);
   }
 
   @Get('me')

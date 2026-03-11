@@ -304,6 +304,17 @@ export class AccessControlService {
       throw new NotFoundException('User not found');
     }
 
+    const memberships = await this.prisma.user.findMany({
+      where: {
+        accountId: user.accountId,
+        status: UserStatus.ACTIVE,
+      },
+      include: {
+        tenant: true,
+      },
+      orderBy: [{ tenant: { name: 'asc' } }, { createdAt: 'asc' }],
+    });
+
     const allPermissionKeys = getAllPermissionKeys();
     const permissionSet = new Set<string>();
 
@@ -334,6 +345,7 @@ export class AccessControlService {
 
     return {
       id: user.id,
+      accountId: user.accountId,
       email: user.email,
       name: user.name,
       role: user.role as Role,
@@ -342,6 +354,15 @@ export class AccessControlService {
       isTenantAdmin: user.isTenantAdmin,
       status: user.status as UserStatus,
       effectivePermissions: [...permissionSet].sort(),
+      availableTenants: memberships.map((membership) => ({
+        tenantId: membership.tenantId,
+        tenantName: membership.tenant.name,
+        tenantSlug: membership.tenant.slug,
+        userId: membership.id,
+        role: membership.role as Role,
+        isSuperAdmin: membership.isSuperAdmin,
+        isTenantAdmin: membership.isTenantAdmin,
+      })),
       branchScope,
     };
   }

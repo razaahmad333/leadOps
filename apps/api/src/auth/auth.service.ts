@@ -1,23 +1,28 @@
-import { BadRequestException, Injectable, UnauthorizedException } from '@nestjs/common';
-import type { Tenant, User } from '@prisma/client';
+import { Injectable, UnauthorizedException } from '@nestjs/common';
+import type { Account, Tenant, User } from '@prisma/client';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import {
+  AuthFlowResponse,
   AuthUser,
   LoginDto,
   LoginResponse,
   RequestLoginOtpDto,
   RequestLoginOtpResponse,
+  Role,
+  SelectTenantDto,
+  SwitchTenantDto,
+  TenantOption,
   UserStatus,
   VerifyLoginOtpDto,
 } from '@leadops/shared';
 import { AccessControlService } from '../access-control/access-control.service';
-import { normalizePhoneNumber, samePhoneNumber } from '../common/utils/phone.util';
+import { normalizePhoneNumber } from '../common/utils/phone.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { getTenantContext } from '../tenant/tenant.store';
 import { MessageBirdVerifyService } from './messagebird-verify.service';
 
-type AuthCandidate = User & { tenant: Tenant };
+type AuthMembership = User & { tenant: Tenant };
 
 @Injectable()
 export class AuthService {
@@ -28,45 +33,49 @@ export class AuthService {
     private readonly messageBirdVerify: MessageBirdVerifyService,
   ) {}
 
-  async login(dto: LoginDto): Promise<LoginResponse> {
-    const tenantContext = getTenantContext();
-    const users = await this.findUsersByPhone(tenantContext?.tenantId ?? '', dto.phone);
-
-    let matchedUser: AuthCandidate | null = null;
-    for (const candidate of users) {
-      const passwordMatch = await bcrypt.compare(dto.password, candidate.passwordHash);
-      if (passwordMatch) {
-        matchedUser = candidate;
-        break;
-      }
+  async login(dto: LoginDto): Promise<AuthFlowResponse> {
+    const account = await this.findAccountByIdentifier(dto.identifier);
+    if (!account) {
+      throw new UnauthorizedException('Invalid email, mobile number, or password');
     }
 
-    if (!matchedUser) {
-      throw new UnauthorizedException('Invalid mobile number or password');
+    this.ensureAccountCanLogin(account);
+
+    const passwordMatch = await bcrypt.compare(dto.password, account.passwordHash);
+    if (!passwordMatch) {
+      throw new UnauthorizedException('Invalid email, mobile number, or password');
     }
 
-    this.ensureUserCanLogin(matchedUser);
-    return this.buildLoginResponse(matchedUser);
+    return this.buildAuthFlowForAccount(account.id);
   }
 
   async requestLoginOtp(dto: RequestLoginOtpDto): Promise<RequestLoginOtpResponse> {
-    const tenantContext = getTenantContext();
-    const user = await this.findSingleOtpUser(tenantContext?.tenantId ?? '', dto.phone);
+    const account = await this.findSingleOtpAccount(dto.phone);
 
-    return this.messageBirdVerify.requestOtp(normalizePhoneNumber(user.phone));
+    return this.messageBirdVerify.requestOtp(normalizePhoneNumber(account.phone));
   }
 
-  async loginWithOtp(dto: VerifyLoginOtpDto): Promise<LoginResponse> {
-    const tenantContext = getTenantContext();
-    const user = await this.findSingleOtpUser(tenantContext?.tenantId ?? '', dto.phone);
+  async loginWithOtp(dto: VerifyLoginOtpDto): Promise<AuthFlowResponse> {
+    const account = await this.findSingleOtpAccount(dto.phone);
 
     await this.messageBirdVerify.verifyOtp(
       dto.verificationId,
-      normalizePhoneNumber(user.phone),
+      normalizePhoneNumber(account.phone),
       dto.otpCode,
     );
 
-    return this.buildLoginResponse(user);
+    return this.buildAuthFlowForAccount(account.id);
+  }
+
+  async selectTenant(dto: SelectTenantDto): Promise<LoginResponse> {
+    const accountId = this.verifyTenantSelectionToken(dto.selectionToken);
+    const membership = await this.findMembership(accountId, dto.tenantId);
+    return this.buildLoginResponse(membership);
+  }
+
+  async switchTenant(accountId: string, dto: SwitchTenantDto): Promise<LoginResponse> {
+    const membership = await this.findMembership(accountId, dto.tenantId);
+    return this.buildLoginResponse(membership);
   }
 
   me(userId: string): Promise<AuthUser> {
@@ -74,13 +83,32 @@ export class AuthService {
     return this.accessControl.buildAuthUser(userId, tenantContext?.tenantId, tenantContext?.requestId);
   }
 
-  private async buildLoginResponse(user: AuthCandidate): Promise<LoginResponse> {
-    const tenantContext = getTenantContext();
+  private async buildAuthFlowForAccount(accountId: string): Promise<AuthFlowResponse> {
+    const memberships = await this.findActiveMemberships(accountId);
+    if (memberships.length === 0) {
+      throw new UnauthorizedException('No active tenant access found for this account');
+    }
+
+    if (memberships.length === 1) {
+      return this.buildLoginResponse(memberships[0]);
+    }
+
+    return {
+      kind: 'tenant_selection_required',
+      selectionToken: this.createTenantSelectionToken(accountId),
+      tenants: memberships.map((membership) => this.mapTenantOption(membership)),
+    };
+  }
+
+  private async buildLoginResponse(user: AuthMembership): Promise<LoginResponse> {
+    const tenantContext = getTenantContext(false);
     const accessToken = this.jwt.sign({
       sub: user.id,
+      accountId: user.accountId,
       role: user.role,
       tenantId: user.tenantId,
       email: user.email,
+      kind: 'access',
     });
 
     const authUser = await this.accessControl.buildAuthUser(
@@ -90,51 +118,149 @@ export class AuthService {
     );
 
     return {
+      kind: 'authenticated',
       accessToken,
       tenantName: user.tenant.name,
       user: authUser,
     };
   }
 
-  private async findSingleOtpUser(tenantId: string, phone: string): Promise<AuthCandidate> {
-    const users = await this.findUsersByPhone(tenantId, phone);
-    const activeUsers = users.filter((user) => user.status === UserStatus.ACTIVE);
-
-    if (activeUsers.length === 0) {
+  private async findSingleOtpAccount(phone: string): Promise<Account> {
+    const account = await this.findAccountByPhone(phone);
+    if (!account) {
       throw new UnauthorizedException('No active account found for this mobile number');
     }
 
-    if (activeUsers.length > 1) {
-      throw new BadRequestException('Multiple accounts use this mobile number. Contact an administrator.');
+    this.ensureAccountCanLogin(account);
+
+    const memberships = await this.findActiveMemberships(account.id);
+    if (memberships.length === 0) {
+      throw new UnauthorizedException('No active account found for this mobile number');
     }
 
-    return activeUsers[0];
+    return account;
   }
 
-  private async findUsersByPhone(tenantId: string, phone: string): Promise<AuthCandidate[]> {
-    const normalizedPhone = normalizePhoneNumber(phone);
-    if (!tenantId || !normalizedPhone) {
-      return [];
+  private async findAccountByIdentifier(identifier: string): Promise<Account | null> {
+    const normalizedIdentifier = identifier.trim();
+    if (!normalizedIdentifier) {
+      return null;
     }
 
-    const users = await this.prisma.user.findMany({
+    const emailAccount = await this.prisma.account.findUnique({
+      where: { email: normalizedIdentifier.toLowerCase() },
+    });
+
+    if (emailAccount) {
+      return emailAccount;
+    }
+
+    const membership = await this.prisma.user.findFirst({
       where: {
+        email: normalizedIdentifier.toLowerCase(),
+      },
+      include: {
+        account: true,
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    if (membership) {
+      return membership.account;
+    }
+
+    return this.findAccountByPhone(normalizedIdentifier);
+  }
+
+  private async findAccountByPhone(phone: string): Promise<Account | null> {
+    const normalizedPhone = normalizePhoneNumber(phone);
+    if (!normalizedPhone) {
+      return null;
+    }
+
+    return this.prisma.account.findUnique({
+      where: {
+        phone: normalizedPhone,
+      },
+    });
+  }
+
+  private async findActiveMemberships(accountId: string): Promise<AuthMembership[]> {
+    return this.prisma.user.findMany({
+      where: {
+        accountId,
+        status: UserStatus.ACTIVE,
+      },
+      include: {
+        tenant: true,
+      },
+      orderBy: [{ tenant: { name: 'asc' } }, { createdAt: 'asc' }],
+    });
+  }
+
+  private async findMembership(accountId: string, tenantId: string): Promise<AuthMembership> {
+    const membership = await this.prisma.user.findFirst({
+      where: {
+        accountId,
         tenantId,
-        phone: {
-          not: null,
-        },
+        status: UserStatus.ACTIVE,
       },
       include: {
         tenant: true,
       },
     });
 
-    return users.filter((user) => samePhoneNumber(user.phone, normalizedPhone));
+    if (!membership) {
+      throw new UnauthorizedException('Tenant access not found for this account');
+    }
+
+    return membership;
   }
 
-  private ensureUserCanLogin(user: AuthCandidate): void {
-    if (user.status === UserStatus.INACTIVE) {
-      throw new UnauthorizedException('This user is inactive');
+  private mapTenantOption(user: AuthMembership): TenantOption {
+    return {
+      tenantId: user.tenantId,
+      tenantName: user.tenant.name,
+      tenantSlug: user.tenant.slug,
+      userId: user.id,
+      role: user.role as Role,
+      isSuperAdmin: user.isSuperAdmin,
+      isTenantAdmin: user.isTenantAdmin,
+    };
+  }
+
+  private createTenantSelectionToken(accountId: string): string {
+    return this.jwt.sign(
+      {
+        purpose: 'tenant-selection',
+        accountId,
+      },
+      {
+        expiresIn: '15m',
+      },
+    );
+  }
+
+  private verifyTenantSelectionToken(token: string): string {
+    try {
+      const payload = this.jwt.verify<{ purpose?: string; accountId?: string }>(token);
+      if (payload.purpose !== 'tenant-selection' || !payload.accountId) {
+        throw new UnauthorizedException('Invalid tenant selection token');
+      }
+
+      return payload.accountId;
+    } catch (error) {
+      if (error instanceof UnauthorizedException) {
+        throw error;
+      }
+
+      throw new UnauthorizedException('Invalid tenant selection token');
+    }
+  }
+
+  private ensureAccountCanLogin(account: Account): void {
+    if (account.status === UserStatus.INACTIVE) {
+      throw new UnauthorizedException('This account is inactive');
     }
   }
 }

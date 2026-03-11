@@ -24,17 +24,27 @@ export {
 } from './queue';
 
 export {
+  AuthFlowResponseSchema,
   LoginSchema,
   RequestLoginOtpSchema,
   RequestLoginOtpResponseSchema,
   VerifyLoginOtpSchema,
   LoginResponseSchema,
+  TenantSelectionChallengeSchema,
+  TenantOptionSchema,
+  SelectTenantSchema,
+  SwitchTenantSchema,
   AuthUserSchema,
+  type AuthFlowResponse,
   type LoginDto,
   type RequestLoginOtpDto,
   type RequestLoginOtpResponse,
   type VerifyLoginOtpDto,
   type LoginResponse,
+  type TenantSelectionChallenge,
+  type TenantOption,
+  type SelectTenantDto,
+  type SwitchTenantDto,
   type AuthUser,
 } from './schemas/auth.schema';
 
@@ -69,7 +79,11 @@ export {
 
 export {
   TenantSettingsSchema,
+  TenantIntakeConfigSchema,
+  UpdateTenantIntakeConfigSchema,
   type TenantSettings,
+  type TenantIntakeConfig,
+  type UpdateTenantIntakeConfigDto,
 } from './schemas/settings.schema';
 
 export {
@@ -77,6 +91,8 @@ export {
   DisplayVocabularySchema,
   DashboardCardConfigSchema,
   LeadFieldConfigSchema,
+  CustomEnquiryFieldSchema,
+  TestPackageSchema,
   PipelineStageSchema,
   FollowupRulesSchema,
   ThemeConfigSchema,
@@ -86,6 +102,8 @@ export {
   type DisplayVocabulary,
   type DashboardCardConfig,
   type LeadFieldConfig,
+  type CustomEnquiryField,
+  type TestPackage,
   type PipelineStage,
   type FollowupRules,
   type ThemeConfig,
@@ -128,3 +146,24 @@ export {
   type UpdateUserDto,
   type ResetPasswordDto,
 } from './schemas/rbac.schema';
+
+export {
+  PlatformMembershipSummarySchema,
+  PlatformAdminUserSummarySchema,
+  PlatformTenantSummarySchema,
+  PlatformAccountSummarySchema,
+  PlatformAdminOverviewSchema,
+  CreateTenantSchema,
+  CreatePlatformMembershipSchema,
+  UpdatePlatformUserSchema,
+  ResetPlatformUserPasswordSchema,
+  type PlatformMembershipSummary,
+  type PlatformAdminUserSummary,
+  type PlatformTenantSummary,
+  type PlatformAccountSummary,
+  type PlatformAdminOverview,
+  type CreateTenantDto,
+  type CreatePlatformMembershipDto,
+  type UpdatePlatformUserDto,
+  type ResetPlatformUserPasswordDto,
+} from './schemas/platform-admin.schema';

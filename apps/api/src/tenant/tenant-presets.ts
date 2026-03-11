@@ -125,6 +125,8 @@ const genericDisplayConfig: TenantDisplayConfig = {
   featureFlags: {
     aiAssist: true,
   },
+  customEnquiryFields: [],
+  testPackages: [],
 };
 
 const diagnosticsDisplayConfig: TenantDisplayConfig = {
@@ -287,6 +289,14 @@ const diagnosticsDisplayConfig: TenantDisplayConfig = {
   featureFlags: {
     aiAssist: true,
   },
+  customEnquiryFields: [],
+  testPackages: [
+    { id: 'cbc', name: 'CBC', description: 'Complete blood count panel.', enabled: true },
+    { id: 'lft', name: 'LFT', description: 'Liver function test panel.', enabled: true },
+    { id: 'kft', name: 'KFT', description: 'Kidney function test panel.', enabled: true },
+    { id: 'vitamin-profile', name: 'Vitamin Profile', description: 'Vitamin deficiency screening package.', enabled: true },
+    { id: 'diabetes-package', name: 'Diabetes Package', description: 'Comprehensive diabetes monitoring package.', enabled: true },
+  ],
 };
 
 export function getPresetDisplayConfig(preset: IndustryPreset): TenantDisplayConfig {

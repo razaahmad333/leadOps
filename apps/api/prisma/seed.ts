@@ -158,11 +158,56 @@ async function ensureTenantBranches(tenantId: string, preset: IndustryPreset) {
   return branches;
 }
 
+async function upsertAccount(input: {
+  email: string;
+  phone?: string | null;
+  passwordHash: string;
+}) {
+  const normalizedPhone = input.phone ?? null;
+
+  const [emailAccount, phoneAccount] = await Promise.all([
+    prisma.account.findUnique({
+      where: { email: input.email },
+    }),
+    normalizedPhone
+      ? prisma.account.findUnique({
+          where: { phone: normalizedPhone },
+        })
+      : Promise.resolve(null),
+  ]);
+
+  if (emailAccount && phoneAccount && emailAccount.id !== phoneAccount.id) {
+    throw new Error(`Seed account collision for ${input.email}: email and phone resolve to different accounts`);
+  }
+
+  const existing = emailAccount ?? phoneAccount;
+  if (existing) {
+    return prisma.account.update({
+      where: { id: existing.id },
+      data: {
+        email: input.email,
+        phone: normalizedPhone,
+        passwordHash: input.passwordHash,
+        status: 'ACTIVE',
+      },
+    });
+  }
+
+  return prisma.account.create({
+    data: {
+      email: input.email,
+      phone: normalizedPhone,
+      passwordHash: input.passwordHash,
+      status: 'ACTIVE',
+    },
+  });
+}
+
 async function upsertUser(input: {
   tenantId: string;
+  accountId: string;
   email: string;
   name: string;
-  passwordHash: string;
   legacyRole: LegacyRole;
   phone?: string | null;
   isSuperAdmin?: boolean;
@@ -177,9 +222,9 @@ async function upsertUser(input: {
       },
     },
     update: {
+      accountId: input.accountId,
       name: input.name,
       phone: input.phone ?? null,
-      passwordHash: input.passwordHash,
       role: input.legacyRole,
       isSuperAdmin: input.isSuperAdmin ?? false,
       isTenantAdmin: input.isTenantAdmin ?? false,
@@ -188,10 +233,10 @@ async function upsertUser(input: {
     },
     create: {
       tenantId: input.tenantId,
+      accountId: input.accountId,
       email: input.email,
       name: input.name,
       phone: input.phone ?? null,
-      passwordHash: input.passwordHash,
       role: input.legacyRole,
       isSuperAdmin: input.isSuperAdmin ?? false,
       isTenantAdmin: input.isTenantAdmin ?? false,
@@ -232,22 +277,35 @@ async function seedTenantUsers(input: {
   branches: Array<{ id: string; name: string }>;
   includeSuperAdmin: boolean;
 }) {
+  const [ownerAccount, staffAccount] = await Promise.all([
+    upsertAccount({
+      email: 'owner@local.test',
+      phone: '+1-555-0101',
+      passwordHash: input.passwordHash,
+    }),
+    upsertAccount({
+      email: 'staff@local.test',
+      phone: '+1-555-0102',
+      passwordHash: input.passwordHash,
+    }),
+  ]);
+
   const owner = await upsertUser({
     tenantId: input.tenantId,
-    email: `owner+${input.prefix}@local.test`,
+    accountId: ownerAccount.id,
+    email: ownerAccount.email,
     name: `${input.prefix} Owner`,
-    phone: '+1-555-0101',
-    passwordHash: input.passwordHash,
+    phone: ownerAccount.phone,
     legacyRole: LegacyRole.OWNER,
     defaultBranchId: input.branches[0]?.id ?? null,
   });
 
   const staff = await upsertUser({
     tenantId: input.tenantId,
-    email: `staff+${input.prefix}@local.test`,
+    accountId: staffAccount.id,
+    email: staffAccount.email,
     name: `${input.prefix} Staff`,
-    phone: '+1-555-0102',
-    passwordHash: input.passwordHash,
+    phone: staffAccount.phone,
     legacyRole: LegacyRole.STAFF,
     defaultBranchId: input.branches[0]?.id ?? null,
   });
@@ -262,12 +320,18 @@ async function seedTenantUsers(input: {
 
   let superAdmin: Awaited<ReturnType<typeof upsertUser>> | null = null;
   if (input.includeSuperAdmin) {
-    superAdmin = await upsertUser({
-      tenantId: input.tenantId,
+    const superAdminAccount = await upsertAccount({
       email: 'admin@local.test',
-      name: 'Platform Super Admin',
       phone: '+1-555-0001',
       passwordHash: input.passwordHash,
+    });
+
+    superAdmin = await upsertUser({
+      tenantId: input.tenantId,
+      accountId: superAdminAccount.id,
+      email: superAdminAccount.email,
+      name: 'Platform Super Admin',
+      phone: superAdminAccount.phone,
       legacyRole: LegacyRole.OWNER,
       isSuperAdmin: true,
       isTenantAdmin: true,
@@ -503,26 +567,25 @@ async function main(): Promise<void> {
     ensureTenantBranches(demoGenericTenant.id, IndustryPreset.GENERIC),
   ]);
 
-  const [labUsers, genericUsers] = await Promise.all([
-    seedTenantUsers({
-      tenantId: demoLabTenant.id,
-      preset: IndustryPreset.DIAGNOSTICS_LAB,
-      prefix: 'lab',
-      passwordHash,
-      roleMap: labRoleMap,
-      branches: labBranches,
-      includeSuperAdmin: true,
-    }),
-    seedTenantUsers({
-      tenantId: demoGenericTenant.id,
-      preset: IndustryPreset.GENERIC,
-      prefix: 'generic',
-      passwordHash,
-      roleMap: genericRoleMap,
-      branches: genericBranches,
-      includeSuperAdmin: false,
-    }),
-  ]);
+  const labUsers = await seedTenantUsers({
+    tenantId: demoLabTenant.id,
+    preset: IndustryPreset.DIAGNOSTICS_LAB,
+    prefix: 'lab',
+    passwordHash,
+    roleMap: labRoleMap,
+    branches: labBranches,
+    includeSuperAdmin: true,
+  });
+
+  const genericUsers = await seedTenantUsers({
+    tenantId: demoGenericTenant.id,
+    preset: IndustryPreset.GENERIC,
+    prefix: 'generic',
+    passwordHash,
+    roleMap: genericRoleMap,
+    branches: genericBranches,
+    includeSuperAdmin: false,
+  });
 
   await prisma.followUp.deleteMany({
     where: { tenantId: { in: [demoLabTenant.id, demoGenericTenant.id] } },
@@ -542,15 +605,13 @@ async function main(): Promise<void> {
   // eslint-disable-next-line no-console
   console.log('Seed complete. Use these local credentials:');
   // eslint-disable-next-line no-console
-  console.log('SUPER_ADMIN: admin@local.test / Password123!');
+  console.log('SUPER_ADMIN: admin@local.test or +1-555-0001 / Password123!');
   // eslint-disable-next-line no-console
-  console.log('Demo Lab OWNER: owner+lab@local.test / Password123!');
+  console.log('Shared OWNER (Demo Lab + Demo Generic): owner@local.test or +1-555-0101 / Password123!');
   // eslint-disable-next-line no-console
-  console.log('Demo Lab STAFF: staff+lab@local.test / Password123!');
+  console.log('Shared STAFF (Demo Lab + Demo Generic): staff@local.test or +1-555-0102 / Password123!');
   // eslint-disable-next-line no-console
-  console.log('Demo Generic OWNER: owner+generic@local.test / Password123!');
-  // eslint-disable-next-line no-console
-  console.log('Demo Generic STAFF: staff+generic@local.test / Password123!');
+  console.log('Choose a tenant after login for shared accounts with multiple memberships.');
   // eslint-disable-next-line no-console
   console.log(`Demo Lab tenant id: ${demoLabTenant.id}`);
   // eslint-disable-next-line no-console

@@ -108,10 +108,7 @@ export class LeadsService {
 
     this.ensureActiveLeadFollowUp(resolvedStage.internalStatus, dto.nextFollowUpAt);
 
-    const normalizedFollowUp = await this.tenantConfig.normalizeToBusinessWindow(
-      dto.nextFollowUpAt,
-      tenant?.tenantId,
-    );
+    const normalizedFollowUp = new Date(dto.nextFollowUpAt);
 
     const serializedIntakeData = dto.intakeData
       ? (JSON.parse(JSON.stringify(dto.intakeData)) as Prisma.InputJsonValue)
@@ -224,7 +221,7 @@ export class LeadsService {
     const resolvedStatus = dto.status ?? nextStage.internalStatus;
     const nextFollowUpAt =
       dto.nextFollowUpAt && ACTIVE_LEAD_STATUSES.includes(resolvedStatus)
-        ? await this.tenantConfig.normalizeToBusinessWindow(dto.nextFollowUpAt, tenant?.tenantId)
+        ? new Date(dto.nextFollowUpAt)
         : existing.nextFollowUpAt;
 
     if (ACTIVE_LEAD_STATUSES.includes(resolvedStatus) && !nextFollowUpAt) {
