@@ -197,7 +197,7 @@ export function RolesPage(): React.JSX.Element {
             Build permission bundles once, then assign them across the tenant.
           </p>
         </div>
-        <Button onClick={openCreate} className="gap-2 self-start w-full sm:w-auto">
+        <Button data-tour-id="roles-create-role" onClick={openCreate} className="gap-2 self-start w-full sm:w-auto">
           <Plus className="h-4 w-4" />
           Create Role
         </Button>

@@ -46,6 +46,25 @@
     min-height: 100vh;
   }
 
+  .tour-highlight {
+    position: relative;
+    z-index: 69;
+    outline: 2px solid hsl(var(--primary));
+    box-shadow: 0 0 0 6px hsl(var(--primary) / 0.18);
+    border-radius: 0.75rem;
+    animation: tourPulse 1.7s ease-in-out infinite;
+  }
+
+  @keyframes tourPulse {
+    0%,
+    100% {
+      box-shadow: 0 0 0 4px hsl(var(--primary) / 0.18);
+    }
+    50% {
+      box-shadow: 0 0 0 8px hsl(var(--primary) / 0.28);
+    }
+  }
+
   h1,
   h2,
   h3,

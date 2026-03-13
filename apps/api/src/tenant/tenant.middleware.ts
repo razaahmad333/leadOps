@@ -10,7 +10,7 @@ export class TenantMiddleware implements NestMiddleware {
   constructor(private readonly prisma: PrismaService) {}
 
   use(req: any, res: any, next: () => void): void {
-    const requestId = (req.headers['x-request-id'] as string | undefined) ?? randomUUID();
+    const requestId = this.resolveRequestId(req.headers['x-request-id'] as string | undefined);
 
     req.requestId = requestId;
     if (typeof res.setHeader === 'function') {
@@ -23,6 +23,20 @@ export class TenantMiddleware implements NestMiddleware {
     }
 
     void this.resolveTenant(req, requestId, next);
+  }
+
+  private resolveRequestId(headerValue: string | undefined): string {
+    const normalized = headerValue?.trim();
+    if (!normalized) {
+      return randomUUID();
+    }
+
+    // Keep request ids log-safe and bounded.
+    if (normalized.length > 120 || !/^[a-zA-Z0-9._:-]+$/.test(normalized)) {
+      return randomUUID();
+    }
+
+    return normalized;
   }
 
   private isBypassPath(url: string): boolean {
@@ -95,12 +109,17 @@ export class TenantMiddleware implements NestMiddleware {
     }
 
     req.tenantId = tenant.id;
+    const branchHeader = req.headers['x-branch-id'];
+    const selectedBranchId = typeof branchHeader === 'string' && branchHeader.trim().length > 0
+      ? branchHeader.trim()
+      : undefined;
 
     tenantStorage.run(
       {
         tenantId: tenant.id,
         tenantSlug: tenant.slug,
         requestId,
+        selectedBranchId,
       },
       () => {
         this.logger.debug(`Tenant resolved: ${tenant.slug} (${requestId})`);

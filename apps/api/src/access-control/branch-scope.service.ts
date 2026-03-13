@@ -25,6 +25,23 @@ export class BranchScopeService {
     };
   }
 
+  applyLeadFilterForSelectedBranch<T extends Record<string, unknown>>(
+    user: AuthUser,
+    where: T,
+    selectedBranchId?: string | null,
+  ): T {
+    if (selectedBranchId) {
+      this.ensureBranchAccess(user, selectedBranchId);
+
+      return {
+        ...where,
+        branchId: selectedBranchId,
+      };
+    }
+
+    return this.applyLeadFilter(user, where);
+  }
+
   ensureBranchAccess(user: AuthUser, branchId: string | null | undefined): void {
     const branchIds = this.branchIdsFor(user);
     if (!branchIds || !branchId) {

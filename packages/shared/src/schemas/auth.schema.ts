@@ -8,13 +8,13 @@ export const LoginSchema = z.object({
     .min(3, 'Enter your email or mobile number')
     .max(120, 'Enter a valid email or mobile number'),
   password: z.string().min(8, 'Password must be at least 8 characters'),
-});
+}).strict();
 
 export type LoginDto = z.infer<typeof LoginSchema>;
 
 export const RequestLoginOtpSchema = z.object({
   phone: z.string().min(6, 'Invalid mobile number').max(30, 'Invalid mobile number'),
-});
+}).strict();
 
 export type RequestLoginOtpDto = z.infer<typeof RequestLoginOtpSchema>;
 
@@ -29,7 +29,7 @@ export const VerifyLoginOtpSchema = z.object({
   phone: z.string().min(6, 'Invalid mobile number').max(30, 'Invalid mobile number'),
   verificationId: z.string().min(1),
   otpCode: z.string().min(4, 'Enter the OTP code').max(12, 'Enter the OTP code'),
-});
+}).strict();
 
 export type VerifyLoginOtpDto = z.infer<typeof VerifyLoginOtpSchema>;
 
@@ -52,6 +52,7 @@ export const AuthUserSchema = z.object({
   name: z.string(),
   role: z.nativeEnum(Role),
   tenantId: z.string(),
+  defaultBranchId: z.string().nullable().optional(),
   isSuperAdmin: z.boolean().default(false),
   isTenantAdmin: z.boolean().default(false),
   status: z.nativeEnum(UserStatus).default(UserStatus.ACTIVE),
@@ -92,13 +93,13 @@ export type AuthFlowResponse = z.infer<typeof AuthFlowResponseSchema>;
 
 export const SelectTenantSchema = z.object({
   selectionToken: z.string().min(1),
-  tenantId: z.string().min(1),
-});
+  tenantId: z.string().uuid(),
+}).strict();
 
 export type SelectTenantDto = z.infer<typeof SelectTenantSchema>;
 
 export const SwitchTenantSchema = z.object({
-  tenantId: z.string().min(1),
-});
+  tenantId: z.string().uuid(),
+}).strict();
 
 export type SwitchTenantDto = z.infer<typeof SwitchTenantSchema>;

@@ -1,12 +1,40 @@
-import React, { useEffect, useState, type FormEvent } from 'react';
+import React, { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { ArrowRight } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import type { PublicTenantBranding, TenantLoginBranding } from '@leadops/shared';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
+import { PasswordInput } from '../components/ui/password-input';
+
+const DEFAULT_LOGIN_BRANDING: TenantLoginBranding = {
+  eyebrow: 'HikmahOne',
+  headline: 'Run your diagnostic lab with faster follow-ups and fewer missed patients.',
+  subheadline:
+    'Track patient enquiries, booking intent, report delivery, and post-report follow-ups in one focused workspace built for lab operations.',
+  highlightOneLabel: 'Booking pipeline',
+  highlightOneText: 'See every enquiry in motion',
+  highlightTwoLabel: 'Report follow-through',
+  highlightTwoText: 'Reduce missed post-report calls',
+  calloutTitle: 'Built for diagnostics teams',
+  calloutText: 'Give reception, operations, and lab owners a clear view of what needs action across bookings and follow-ups.',
+};
+
+function resolveApiOrigin(): string {
+  const configured = (import.meta.env.VITE_API_URL as string | undefined) ?? '';
+  if (!configured) {
+    return window.location.origin;
+  }
+
+  try {
+    return new URL(configured, window.location.origin).origin;
+  } catch {
+    return configured;
+  }
+}
 
 export function LoginPage(): React.JSX.Element {
   const {
@@ -20,7 +48,9 @@ export function LoginPage(): React.JSX.Element {
     defaultRoute,
   } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const showDevHints = import.meta.env.DEV;
+  const tenantSlug = searchParams.get('tenant')?.trim().toLowerCase() ?? '';
 
   const [identifier, setIdentifier] = useState(showDevHints ? 'owner@local.test' : '');
   const [password, setPassword] = useState(showDevHints ? 'Password123!' : '');
@@ -29,6 +59,12 @@ export function LoginPage(): React.JSX.Element {
   const [verificationId, setVerificationId] = useState<string | null>(null);
   const [mode, setMode] = useState<'password' | 'otp'>('password');
   const [submitting, setSubmitting] = useState(false);
+  const [publicBranding, setPublicBranding] = useState<PublicTenantBranding | null>(null);
+
+  const activeBranding = useMemo(
+    () => publicBranding?.branding ?? DEFAULT_LOGIN_BRANDING,
+    [publicBranding],
+  );
 
   useEffect(() => {
     if (!user) {
@@ -39,6 +75,49 @@ export function LoginPage(): React.JSX.Element {
       replace: true,
     });
   }, [defaultRoute, navigate, user]);
+
+  useEffect(() => {
+    if (!tenantSlug) {
+      setPublicBranding(null);
+      return;
+    }
+
+    if (!/^[a-z0-9-]{2,120}$/.test(tenantSlug)) {
+      setPublicBranding(null);
+      return;
+    }
+
+    const controller = new AbortController();
+    const origin = resolveApiOrigin();
+
+    void fetch(`${origin}/v1/public/tenant-branding?tenant=${encodeURIComponent(tenantSlug)}`, {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          return null;
+        }
+
+        const contentType = response.headers.get('content-type') ?? '';
+        if (!contentType.includes('application/json')) {
+          return null;
+        }
+
+        return (await response.json()) as PublicTenantBranding;
+      })
+      .then((payload) => {
+        setPublicBranding(payload);
+      })
+      .catch(() => {
+        setPublicBranding(null);
+      });
+
+    return () => {
+      controller.abort();
+    };
+  }, [tenantSlug]);
 
   const onSubmit = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
@@ -129,28 +208,37 @@ export function LoginPage(): React.JSX.Element {
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(56,189,248,0.12),transparent_28%),radial-gradient(circle_at_bottom_right,rgba(20,184,166,0.14),transparent_32%)]" />
       <div className="relative grid w-full max-w-6xl gap-5 lg:grid-cols-[1.1fr_0.9fr]">
         <div className="rounded-[2rem] border border-white/80 bg-card/80 p-6 shadow-[0_30px_60px_-36px_rgba(15,23,42,0.45)] backdrop-blur sm:p-8 lg:p-10">
-          <p className="text-xs uppercase tracking-[0.28em] text-muted-foreground">HikmahOne</p>
+          {activeBranding.logoUrl ? (
+            <img
+              src={activeBranding.logoUrl}
+              alt={activeBranding.logoAlt ?? `${publicBranding?.tenantName ?? 'Tenant'} logo`}
+              className="h-12 w-auto max-w-[220px] object-contain"
+              loading="lazy"
+              referrerPolicy="no-referrer"
+            />
+          ) : null}
+          <p className="text-xs uppercase tracking-[0.28em] text-muted-foreground">{activeBranding.eyebrow}</p>
           <h1 className="mt-4 text-3xl font-bold leading-tight sm:text-4xl lg:text-5xl">
-            Run your diagnostic lab with faster follow-ups and fewer missed patients.
+            {activeBranding.headline}
           </h1>
           <p className="mt-4 max-w-xl text-sm text-muted-foreground sm:text-base">
-            Track patient enquiries, booking intent, report delivery, and post-report follow-ups in one focused workspace built for lab operations.
+            {activeBranding.subheadline}
           </p>
           <div className="mt-6 grid gap-3 sm:grid-cols-2 text-sm">
             <div className="rounded-2xl border border-white/70 bg-background/70 p-4">
-              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Booking pipeline</p>
-              <p className="mt-2 text-xl font-semibold sm:text-2xl">See every enquiry in motion</p>
+              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{activeBranding.highlightOneLabel}</p>
+              <p className="mt-2 text-xl font-semibold sm:text-2xl">{activeBranding.highlightOneText}</p>
             </div>
             <div className="rounded-2xl border border-white/70 bg-background/70 p-4">
-              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Report follow-through</p>
-              <p className="mt-2 text-xl font-semibold sm:text-2xl">Reduce missed post-report calls</p>
+              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{activeBranding.highlightTwoLabel}</p>
+              <p className="mt-2 text-xl font-semibold sm:text-2xl">{activeBranding.highlightTwoText}</p>
             </div>
           </div>
 
           <div className="mt-6 rounded-3xl border border-white/70 bg-slate-950/[0.03] p-4 sm:p-5">
-            <p className="text-sm font-semibold">Built for diagnostics teams</p>
+            <p className="text-sm font-semibold">{activeBranding.calloutTitle}</p>
             <p className="mt-2 text-sm text-muted-foreground">
-              Give reception, operations, and lab owners a clear view of what needs action across bookings and follow-ups.
+              {activeBranding.calloutText}
             </p>
           </div>
         </div>
@@ -261,9 +349,8 @@ export function LoginPage(): React.JSX.Element {
                 {mode === 'password' ? (
                   <div className="space-y-2">
                     <Label htmlFor="password">Password</Label>
-                    <Input
+                    <PasswordInput
                       id="password"
-                      type="password"
                       autoComplete="current-password"
                       value={password}
                       onChange={(event) => setPassword(event.target.value)}

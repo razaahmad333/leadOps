@@ -4,6 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import {
   BranchScopeInput,
   BranchScopeType,
@@ -17,6 +18,12 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AccessControlService } from '../access-control/access-control.service';
 import { AccountIdentityService } from '../accounts/account-identity.service';
 import { normalizePhoneNumber } from '../common/utils/phone.util';
+import {
+  buildBranchScopeSummary,
+  normalizeBranchScopeInput,
+  resolveDefaultBranchId,
+  resolveRoleIds,
+} from '../common/utils/user-access.util';
 import { getTenantContext } from '../tenant/tenant.store';
 
 @Injectable()
@@ -67,7 +74,7 @@ export class UsersService {
     return users.map((user) => this.mapTeamUser(user, allBranches));
   }
 
-  async create(dto: CreateUserDto): Promise<TeamUser> {
+  async create(dto: CreateUserDto, actorId?: string): Promise<TeamUser> {
     const tenantId = getTenantContext()?.tenantId ?? '';
     await this.accessControl.ensureTenantInitialized(tenantId);
     const normalizedEmail = dto.email.trim().toLowerCase();
@@ -101,22 +108,44 @@ export class UsersService {
       phone: normalizedPhone,
       password: dto.password,
       requirePasswordForNew: true,
-      rejectPhoneLinkedToDifferentEmail: false,
+      rejectPhoneLinkedToDifferentEmail: true,
       missingPasswordMessage: 'Password is required for this MVP flow',
     });
-    const user = await this.prisma.user.create({
-      data: {
+
+    const existingMembership = await this.prisma.user.findFirst({
+      where: {
         tenantId,
         accountId: account.id,
-        name: dto.name.trim(),
-        email: normalizedEmail,
-        phone: normalizedPhone,
-        status: UserStatus.ACTIVE,
-        isTenantAdmin: dto.isTenantAdmin ?? false,
       },
+      select: { id: true },
     });
 
-    const resolvedRoleIds = this.resolveRoleIds(dto.roleId, dto.roleIds);
+    if (existingMembership) {
+      throw new BadRequestException('This account already has a user in this tenant');
+    }
+
+    let user;
+    try {
+      user = await this.prisma.user.create({
+        data: {
+          tenantId,
+          accountId: account.id,
+          name: dto.name.trim(),
+          email: normalizedEmail,
+          phone: normalizedPhone,
+          status: UserStatus.ACTIVE,
+          isTenantAdmin: dto.isTenantAdmin ?? false,
+        },
+      });
+    } catch (error: unknown) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        throw new BadRequestException('A user with this email or phone already exists');
+      }
+
+      throw error;
+    }
+
+    const resolvedRoleIds = resolveRoleIds(dto.roleId, dto.roleIds);
     await this.accessControl.setUserRoles(
       user.id,
       tenantId,
@@ -136,10 +165,9 @@ export class UsersService {
       orderBy: { name: 'asc' },
     });
 
-    const defaultBranchId = this.resolveDefaultBranchId(
+    const defaultBranchId = resolveDefaultBranchId(
       dto.defaultBranchId,
       normalizedBranchScope,
-      assignedRoles,
       dto.isTenantAdmin ?? false,
     );
 
@@ -151,6 +179,21 @@ export class UsersService {
           roles: assignedRoles,
         }),
         defaultBranchId,
+      },
+    });
+
+    await this.prisma.tenantAuditEvent.create({
+      data: {
+        tenantId,
+        actorId: actorId ?? null,
+        entityType: 'USER',
+        entityId: user.id,
+        action: 'tenant.user.created',
+        metadata: {
+          email: user.email,
+          name: user.name,
+          isTenantAdmin: user.isTenantAdmin,
+        },
       },
     });
 
@@ -191,7 +234,7 @@ export class UsersService {
       existing,
     );
 
-    const resolvedRoleIds = this.resolveRoleIds(dto.roleId, dto.roleIds);
+    const resolvedRoleIds = resolveRoleIds(dto.roleId, dto.roleIds);
     if (dto.roleId !== undefined || dto.roleIds !== undefined || dto.isTenantAdmin !== undefined) {
       await this.accessControl.setUserRoles(id, tenantId, resolvedRoleIds, nextIsTenantAdmin);
     }
@@ -224,10 +267,9 @@ export class UsersService {
 
     await this.ensureLastOwnerProtection(existing, nextLegacyRole);
 
-    const defaultBranchId = this.resolveDefaultBranchId(
+    const defaultBranchId = resolveDefaultBranchId(
       dto.defaultBranchId === undefined ? existing.defaultBranchId : dto.defaultBranchId,
       normalizedBranchScope,
-      assignedRoles,
       nextIsTenantAdmin,
     );
 
@@ -249,10 +291,21 @@ export class UsersService {
       await this.syncAccountPhone(existing.accountId, normalizedPhone);
     }
 
+    await this.prisma.tenantAuditEvent.create({
+      data: {
+        tenantId,
+        actorId: actorId ?? null,
+        entityType: 'USER',
+        entityId: id,
+        action: 'tenant.user.updated',
+        metadata: this.extractUserUpdateMetadata(dto, normalizedPhone) as Prisma.InputJsonValue,
+      },
+    });
+
     return this.findOne(id);
   }
 
-  async resetPassword(id: string, password: string): Promise<void> {
+  async resetPassword(id: string, password: string, actorId?: string): Promise<void> {
     const tenantId = getTenantContext()?.tenantId ?? '';
     const user = await this.prisma.user.findFirst({
       where: { id, tenantId },
@@ -263,6 +316,16 @@ export class UsersService {
     }
 
     await this.accountIdentity.resetPassword(user.accountId, password);
+
+    await this.prisma.tenantAuditEvent.create({
+      data: {
+        tenantId,
+        actorId: actorId ?? null,
+        entityType: 'USER',
+        entityId: id,
+        action: 'tenant.user.password_reset',
+      },
+    });
   }
 
   private async syncAccountPhone(accountId: string, phone: string | null | undefined): Promise<void> {
@@ -347,91 +410,32 @@ export class UsersService {
     isTenantAdmin: boolean,
     existing?: { branchScopes?: Array<{ branchId: string }> },
   ): Promise<BranchScopeInput> {
-    if (isTenantAdmin) {
-      return {
-        scopeType: BranchScopeType.ALL_BRANCHES,
-        branchIds: [],
-      };
-    }
-
-    if (!input) {
-      if (existing?.branchScopes && existing.branchScopes.length > 0) {
-        return {
-          scopeType: BranchScopeType.SELECTED,
-          branchIds: existing.branchScopes.map((scope) => scope.branchId),
-        };
-      }
-
-      return {
-        scopeType: BranchScopeType.ALL_BRANCHES,
-        branchIds: [],
-      };
-    }
-
-    if (input.scopeType === BranchScopeType.ALL_BRANCHES) {
-      return {
-        scopeType: BranchScopeType.ALL_BRANCHES,
-        branchIds: [],
-      };
-    }
-
-    const uniqueBranchIds = [...new Set(input.branchIds)];
-    if (uniqueBranchIds.length === 0) {
-      throw new BadRequestException('Select at least one branch for a scoped user');
-    }
-
-    const branches = await this.prisma.branch.findMany({
-      where: {
-        tenantId,
-        id: { in: uniqueBranchIds },
-      },
+    const normalized = normalizeBranchScopeInput({
+      input,
+      existingBranchIds: existing?.branchScopes?.map((scope) => scope.branchId),
+      forceAllBranches: isTenantAdmin,
     });
 
-    if (branches.length !== uniqueBranchIds.length) {
+    if (normalized.scopeType === BranchScopeType.SELECTED) {
+      await this.ensureActiveBranchesExist(tenantId, normalized.branchIds);
+    }
+
+    return normalized;
+  }
+
+  private async ensureActiveBranchesExist(tenantId: string, branchIds: string[]): Promise<void> {
+    const activeBranches = await this.prisma.branch.findMany({
+      where: {
+        tenantId,
+        id: { in: branchIds },
+        isActive: true,
+      },
+      select: { id: true },
+    });
+
+    if (activeBranches.length !== branchIds.length) {
       throw new BadRequestException('One or more selected branches are invalid');
     }
-
-    return {
-      scopeType: BranchScopeType.SELECTED,
-      branchIds: uniqueBranchIds,
-    };
-  }
-
-  private resolveDefaultBranchId(
-    candidate: string | null | undefined,
-    branchScope: BranchScopeInput,
-    assignedRoles: Array<{ name: string }>,
-    isTenantAdmin: boolean,
-  ): string | null {
-    if (isTenantAdmin) {
-      return null;
-    }
-
-    if (branchScope.scopeType === BranchScopeType.ALL_BRANCHES) {
-      return candidate ?? null;
-    }
-
-    if (candidate && branchScope.branchIds.includes(candidate)) {
-      return candidate;
-    }
-
-    if (assignedRoles.length === 0) {
-      return branchScope.branchIds[0] ?? null;
-    }
-
-    return branchScope.branchIds[0] ?? null;
-  }
-
-  private resolveRoleIds(roleId: string | null | undefined, roleIds: string[] | undefined): string[] {
-    if (roleIds && roleIds.length > 0) {
-      return roleIds;
-    }
-
-    if (roleId) {
-      return [roleId];
-    }
-
-    return [];
   }
 
   private async ensureLastOwnerProtection(
@@ -489,19 +493,49 @@ export class UsersService {
       isSuperAdmin: user.isSuperAdmin,
       roles,
       roleNames: roles.map((role) => role.name),
-      branchScope:
-        user.isTenantAdmin || user.branchScopes.length === 0
-          ? {
-              scopeType: BranchScopeType.ALL_BRANCHES,
-              branchIds: allBranches.map((branch) => branch.id),
-              branchNames: allBranches.map((branch) => branch.name),
-            }
-          : {
-              scopeType: BranchScopeType.SELECTED,
-              branchIds: user.branchScopes.map((scope) => scope.branchId),
-              branchNames: user.branchScopes.map((scope) => scope.branch.name),
-            },
+      branchScope: buildBranchScopeSummary({
+        forceAllBranches: user.isTenantAdmin,
+        assignedBranches: user.branchScopes,
+        allBranches,
+      }),
       defaultBranchId: user.defaultBranchId,
     };
+  }
+
+  private extractUserUpdateMetadata(
+    dto: UpdateUserDto,
+    normalizedPhone: string | null | undefined,
+  ): Record<string, unknown> {
+    const metadata: Record<string, unknown> = {};
+
+    if (dto.name !== undefined) {
+      metadata.name = dto.name.trim();
+    }
+
+    if (dto.phone !== undefined) {
+      metadata.phone = normalizedPhone;
+    }
+
+    if (dto.status !== undefined) {
+      metadata.status = dto.status;
+    }
+
+    if (dto.isTenantAdmin !== undefined) {
+      metadata.isTenantAdmin = dto.isTenantAdmin;
+    }
+
+    if (dto.defaultBranchId !== undefined) {
+      metadata.defaultBranchId = dto.defaultBranchId;
+    }
+
+    if (dto.branchScope !== undefined) {
+      metadata.branchScope = dto.branchScope;
+    }
+
+    if (dto.roleId !== undefined || dto.roleIds !== undefined) {
+      metadata.roleIds = dto.roleIds ?? (dto.roleId ? [dto.roleId] : []);
+    }
+
+    return metadata;
   }
 }

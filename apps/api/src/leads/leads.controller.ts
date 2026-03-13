@@ -4,7 +4,9 @@ import {
   Get,
   Param,
   Patch,
+  ParseUUIDPipe,
   Post,
+  Query,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -18,7 +20,10 @@ import {
   CreateLeadNoteSchema,
   CreateLeadSchema,
   Lead,
+  LeadListResponse,
   LeadDetail,
+  ListLeadsQueryDto,
+  ListLeadsQuerySchema,
   AuthUser,
   UpdateLeadStatusDto,
   UpdateLeadStatusSchema,
@@ -37,14 +42,17 @@ export class LeadsController {
   @Get()
   @Permissions('enquiries.view')
   @ApiOperation({ summary: 'List leads for the current tenant' })
-  findAll(@CurrentUser() user: AuthUser): Promise<Lead[]> {
-    return this.leadsService.findAll(user);
+  findAll(
+    @CurrentUser() user: AuthUser,
+    @Query(new ZodValidationPipe(ListLeadsQuerySchema)) query: ListLeadsQueryDto,
+  ): Promise<LeadListResponse> {
+    return this.leadsService.findAll(user, query);
   }
 
   @Get(':id')
   @Permissions('enquiries.view')
   @ApiOperation({ summary: 'Get lead details and activity timeline' })
-  findOne(@Param('id') id: string, @CurrentUser() user: AuthUser): Promise<LeadDetail> {
+  findOne(@Param('id', new ParseUUIDPipe()) id: string, @CurrentUser() user: AuthUser): Promise<LeadDetail> {
     return this.leadsService.findOne(id, user);
   }
 
@@ -67,7 +75,7 @@ export class LeadsController {
   @Permissions('enquiries.edit')
   @ApiOperation({ summary: 'Update lead status' })
   updateStatus(
-    @Param('id') id: string,
+    @Param('id', new ParseUUIDPipe()) id: string,
     @Body(new ZodValidationPipe(UpdateLeadStatusSchema)) dto: UpdateLeadStatusDto,
     @CurrentUser() user: AuthUser,
   ): Promise<Lead> {
@@ -78,7 +86,7 @@ export class LeadsController {
   @Permissions('enquiries.edit')
   @ApiOperation({ summary: 'Add a note to the lead activity timeline' })
   async addNote(
-    @Param('id') id: string,
+    @Param('id', new ParseUUIDPipe()) id: string,
     @Body(new ZodValidationPipe(CreateLeadNoteSchema)) dto: CreateLeadNoteDto,
     @CurrentUser() user: AuthUser,
   ): Promise<{ success: boolean }> {

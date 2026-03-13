@@ -11,6 +11,22 @@ interface ApiErrorBody {
   };
 }
 
+function selectedBranchId(): string | null {
+  const raw = localStorage.getItem('session');
+  if (!raw) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as { selectedBranchId?: string | null };
+    return typeof parsed.selectedBranchId === 'string' && parsed.selectedBranchId.trim().length > 0
+      ? parsed.selectedBranchId.trim()
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 function token(): string | null {
   return localStorage.getItem('access_token');
 }
@@ -32,6 +48,11 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 
   if (bearer) {
     headers.Authorization = `Bearer ${bearer}`;
+
+    const branchId = selectedBranchId();
+    if (branchId) {
+      headers['x-branch-id'] = branchId;
+    }
   }
 
   const response = await fetch(`${API_BASE}${path}`, {

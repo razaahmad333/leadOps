@@ -107,7 +107,6 @@ export class AuthService {
       accountId: user.accountId,
       role: user.role,
       tenantId: user.tenantId,
-      email: user.email,
       kind: 'access',
     });
 

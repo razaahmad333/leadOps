@@ -8,6 +8,7 @@ import {
   getLegacyRoleTemplateName,
   PERMISSION_CATALOG,
 } from '../src/access-control/permission-catalog';
+import { DEFAULT_TENANT_TIMEZONE } from '../src/tenant/tenant-defaults';
 import { getPresetDisplayConfig } from '../src/tenant/tenant-presets';
 
 const prisma = new PrismaClient();
@@ -61,7 +62,7 @@ async function upsertTenantWithConfig(input: {
       industryPreset: input.industryPreset,
       configVersion: 1,
       displayConfig,
-      timezone: 'Asia/Jakarta',
+      timezone: DEFAULT_TENANT_TIMEZONE,
       businessStart: '09:00',
       businessEnd: '18:00',
       stages: displayConfig.pipelineConfig.stages.map((stage) => stage.label),

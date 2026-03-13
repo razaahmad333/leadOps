@@ -10,8 +10,11 @@ import {
   CreateLeadDto,
   DOMAIN_EVENTS,
   Lead,
+  LeadListResponse,
   LeadDetail,
   LeadStatus,
+  ListLeadsQueryDto,
+  REALTIME_INVALIDATION_EVENTS,
   UpdateLeadStatusDto,
 } from '@leadops/shared';
 import { Prisma } from '@prisma/client';
@@ -22,6 +25,8 @@ import { QueueService } from '../queue/queue.service';
 import { DomainEventsService } from '../events/domain-events.service';
 import { BranchScopeService } from '../access-control/branch-scope.service';
 import { MilestoneRulesService } from './milestone-rules.service';
+import { RealtimePublisherService } from '../realtime/realtime.publisher.service';
+import { buildEmptyPaginatedResponse, buildPaginatedResponse } from '../common/utils/pagination.util';
 
 interface CreateLeadOptions {
   actor?: AuthUser;
@@ -38,17 +43,72 @@ export class LeadsService {
     private readonly domainEvents: DomainEventsService,
     private readonly branchScope: BranchScopeService,
     private readonly milestoneRules: MilestoneRulesService,
+    private readonly realtimePublisher: RealtimePublisherService,
   ) {}
 
-  async findAll(user: AuthUser): Promise<Lead[]> {
+  async findAll(user: AuthUser, query: ListLeadsQueryDto): Promise<LeadListResponse> {
     const tenant = getTenantContext();
+    const selectedBranchId = tenant?.selectedBranchId;
+    const page = query.page;
+    const pageSize = query.pageSize;
+    const search = query.search?.trim();
 
-    const leads = await this.prisma.lead.findMany({
-      where: this.branchScope.applyLeadFilter(user, { tenantId: tenant?.tenantId }),
-      orderBy: { createdAt: 'desc' },
-    });
+    if (query.branchId) {
+      this.branchScope.ensureBranchAccess(user, query.branchId);
+    }
 
-    return leads as unknown as Lead[];
+    if (selectedBranchId && query.branchId && query.branchId !== selectedBranchId) {
+      return buildEmptyPaginatedResponse<Lead>(page, pageSize);
+    }
+
+    const where = this.branchScope.applyLeadFilterForSelectedBranch<Prisma.LeadWhereInput>(
+      user,
+      { tenantId: tenant?.tenantId },
+      selectedBranchId,
+    );
+
+    if (!selectedBranchId && query.branchId) {
+      where.branchId = query.branchId;
+    }
+
+    if (query.stageKey) {
+      where.stageKey = query.stageKey;
+    }
+
+    if (search) {
+      where.OR = [
+        {
+          name: {
+            contains: search,
+            mode: 'insensitive',
+          },
+        },
+        {
+          phone: {
+            contains: search,
+            mode: 'insensitive',
+          },
+        },
+        {
+          email: {
+            contains: search,
+            mode: 'insensitive',
+          },
+        },
+      ];
+    }
+
+    const [leads, total] = await this.prisma.$transaction([
+      this.prisma.lead.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      this.prisma.lead.count({ where }),
+    ]);
+
+    return buildPaginatedResponse(leads as unknown as Lead[], page, pageSize, total);
   }
 
   async findOne(id: string, user: AuthUser): Promise<LeadDetail> {
@@ -114,6 +174,11 @@ export class LeadsService {
       ? (JSON.parse(JSON.stringify(dto.intakeData)) as Prisma.InputJsonValue)
       : undefined;
     let selectedBranchId = dto.branchId ?? null;
+    const tenantSelectedBranchId = tenant?.selectedBranchId;
+
+    if (!selectedBranchId && tenantSelectedBranchId) {
+      selectedBranchId = tenantSelectedBranchId;
+    }
 
     if (!selectedBranchId && actor?.branchScope.scopeType === BranchScopeType.SELECTED) {
       selectedBranchId = actor.branchScope.branchIds[0] ?? null;
@@ -121,7 +186,7 @@ export class LeadsService {
 
     if (!selectedBranchId && tenant?.tenantId) {
       const defaultBranch = await this.prisma.branch.findFirst({
-        where: { tenantId: tenant.tenantId },
+        where: { tenantId: tenant.tenantId, isActive: true },
         orderBy: { createdAt: 'asc' },
       });
       selectedBranchId = defaultBranch?.id ?? null;
@@ -181,6 +246,21 @@ export class LeadsService {
       leadId: lead.id,
     });
 
+    this.publishLeadRealtimeInvalidations({
+      tenantId: lead.tenantId,
+      branchId: lead.branchId,
+      leadId: lead.id,
+      reason: 'lead.created',
+    });
+    this.realtimePublisher.publishInvalidation({
+      event: REALTIME_INVALIDATION_EVENTS.TODAY_INVALIDATE,
+      tenantId: lead.tenantId,
+      branchId: lead.branchId ?? undefined,
+      leadId: lead.id,
+      reason: 'lead.created',
+      source: 'api',
+    });
+
     return lead as unknown as Lead;
   }
 
@@ -219,39 +299,164 @@ export class LeadsService {
     }
 
     const resolvedStatus = dto.status ?? nextStage.internalStatus;
-    const nextFollowUpAt =
-      dto.nextFollowUpAt && ACTIVE_LEAD_STATUSES.includes(resolvedStatus)
-        ? new Date(dto.nextFollowUpAt)
-        : existing.nextFollowUpAt;
+    const isActiveLeadStatus = ACTIVE_LEAD_STATUSES.includes(resolvedStatus);
+    let nextFollowUpAt = isActiveLeadStatus ? existing.nextFollowUpAt : null;
 
-    if (ACTIVE_LEAD_STATUSES.includes(resolvedStatus) && !nextFollowUpAt) {
+    if (dto.nextFollowUpAt && isActiveLeadStatus) {
+      nextFollowUpAt = await this.tenantConfig.normalizeToBusinessWindow(new Date(dto.nextFollowUpAt));
+    }
+
+    if (isActiveLeadStatus && !nextFollowUpAt) {
       throw new BadRequestException('Every active lead must have a next follow-up time');
     }
 
-    const updated = await this.prisma.lead.update({
-      where: { id },
-      data: {
-        status: resolvedStatus,
-        stageKey: nextStage.key,
-        nextFollowUpAt: ACTIVE_LEAD_STATUSES.includes(resolvedStatus) ? nextFollowUpAt : existing.nextFollowUpAt,
-      },
+    const {
+      updatedLead: updated,
+      followUpToReschedule,
+      followUpIdsToCancel,
+    } = await this.prisma.$transaction(async (tx) => {
+      const pendingFollowUpIdsToCancel: string[] = [];
+      let followUpToRescheduleFromStatus: { followUpId: string; runAt: Date } | null = null;
+
+      if (!isActiveLeadStatus) {
+        const pendingFollowUps = await tx.followUp.findMany({
+          where: {
+            tenantId: existing.tenantId,
+            leadId: existing.id,
+            done: false,
+          },
+          select: { id: true },
+        });
+
+        if (pendingFollowUps.length > 0) {
+          const pendingFollowUpIds = pendingFollowUps.map((followUp) => followUp.id);
+          pendingFollowUpIdsToCancel.push(...pendingFollowUpIds);
+
+          await tx.followUp.updateMany({
+            where: {
+              id: { in: pendingFollowUpIds },
+            },
+            data: {
+              done: true,
+              doneAt: new Date(),
+            },
+          });
+
+          await tx.leadActivity.create({
+            data: {
+              tenantId: existing.tenantId,
+              leadId: existing.id,
+              actorId: actor?.id ?? null,
+              type: 'followup.auto.closed',
+              message: `${pendingFollowUpIds.length} pending follow-up task${pendingFollowUpIds.length === 1 ? '' : 's'} auto-closed because lead moved to ${nextStage.label}`,
+            },
+          });
+        }
+      } else if (dto.nextFollowUpAt && nextFollowUpAt) {
+        const pendingGeneralFollowUp = await tx.followUp.findFirst({
+          where: {
+            tenantId: existing.tenantId,
+            leadId: existing.id,
+            done: false,
+            kind: 'GENERAL',
+          },
+          orderBy: { scheduledAt: 'asc' },
+          select: { id: true },
+        });
+
+        if (pendingGeneralFollowUp) {
+          await tx.followUp.update({
+            where: { id: pendingGeneralFollowUp.id },
+            data: {
+              scheduledAt: nextFollowUpAt,
+            },
+          });
+
+          followUpToRescheduleFromStatus = {
+            followUpId: pendingGeneralFollowUp.id,
+            runAt: nextFollowUpAt,
+          };
+
+          await tx.leadActivity.create({
+            data: {
+              tenantId: existing.tenantId,
+              leadId: existing.id,
+              actorId: actor?.id ?? null,
+              type: 'followup.rescheduled',
+              message: `Follow-up rescheduled to ${nextFollowUpAt.toISOString()} from status update`,
+            },
+          });
+        } else {
+          const createdFollowUp = await tx.followUp.create({
+            data: {
+              tenantId: existing.tenantId,
+              leadId: existing.id,
+              assignedTo: existing.ownerId,
+              kind: 'GENERAL',
+              scheduledAt: nextFollowUpAt,
+              note: 'Auto-created from status update',
+            },
+          });
+
+          followUpToRescheduleFromStatus = {
+            followUpId: createdFollowUp.id,
+            runAt: nextFollowUpAt,
+          };
+
+          await tx.leadActivity.create({
+            data: {
+              tenantId: existing.tenantId,
+              leadId: existing.id,
+              actorId: actor?.id ?? null,
+              type: 'followup.scheduled',
+              message: `Follow-up auto-created for ${nextFollowUpAt.toISOString()} from status update`,
+            },
+          });
+        }
+      }
+
+      const updatedLead = await tx.lead.update({
+        where: { id },
+        data: {
+          status: resolvedStatus,
+          stageKey: nextStage.key,
+          nextFollowUpAt: isActiveLeadStatus ? nextFollowUpAt : null,
+        },
+      });
+
+      await tx.leadActivity.create({
+        data: {
+          tenantId: updatedLead.tenantId,
+          leadId: updatedLead.id,
+          actorId: actor?.id ?? null,
+          type: 'lead.status.changed',
+          message: `Status updated to ${nextStage.label}`,
+          metadata: {
+            fromStatus: existing.status,
+            toStatus: resolvedStatus,
+            fromStageKey: existing.stageKey,
+            toStageKey: nextStage.key,
+          },
+        },
+      });
+
+      return {
+        updatedLead,
+        followUpToReschedule: followUpToRescheduleFromStatus,
+        followUpIdsToCancel: pendingFollowUpIdsToCancel,
+      };
     });
 
-    await this.prisma.leadActivity.create({
-      data: {
-        tenantId: updated.tenantId,
-        leadId: updated.id,
-        actorId: actor?.id ?? null,
-        type: 'lead.status.changed',
-        message: `Status updated to ${nextStage.label}`,
-        metadata: {
-          fromStatus: existing.status,
-          toStatus: resolvedStatus,
-          fromStageKey: existing.stageKey,
-          toStageKey: nextStage.key,
-        },
-      },
-    });
+    if (followUpToReschedule) {
+      await this.queue.rescheduleFollowupReminder(
+        { tenantId: updated.tenantId, followUpId: followUpToReschedule.followUpId },
+        followUpToReschedule.runAt,
+      );
+    }
+
+    if (followUpIdsToCancel.length > 0) {
+      await Promise.all(followUpIdsToCancel.map((followUpId) => this.queue.cancelFollowupReminder(followUpId)));
+    }
 
     const milestone = await this.tenantConfig.getStageMilestone(nextStage.key, tenant?.tenantId);
 
@@ -274,6 +479,21 @@ export class LeadsService {
       });
     }
 
+    this.publishLeadRealtimeInvalidations({
+      tenantId: updated.tenantId,
+      branchId: updated.branchId,
+      leadId: updated.id,
+      reason: 'lead.status.updated',
+    });
+    this.realtimePublisher.publishInvalidation({
+      event: REALTIME_INVALIDATION_EVENTS.TODAY_INVALIDATE,
+      tenantId: updated.tenantId,
+      branchId: updated.branchId ?? undefined,
+      leadId: updated.id,
+      reason: 'lead.status.updated',
+      source: 'api',
+    });
+
     return updated as unknown as Lead;
   }
 
@@ -295,6 +515,40 @@ export class LeadsService {
         type: 'lead.note.added',
         message: note,
       },
+    });
+
+    this.realtimePublisher.publishInvalidation({
+      event: REALTIME_INVALIDATION_EVENTS.LEAD_DETAIL_INVALIDATE,
+      tenantId: lead.tenantId,
+      branchId: lead.branchId ?? undefined,
+      leadId: lead.id,
+      reason: 'lead.note.added',
+      source: 'api',
+    });
+  }
+
+  private publishLeadRealtimeInvalidations(input: {
+    tenantId: string;
+    branchId: string | null | undefined;
+    leadId: string;
+    reason: string;
+  }): void {
+    this.realtimePublisher.publishInvalidation({
+      event: REALTIME_INVALIDATION_EVENTS.LEADS_INVALIDATE,
+      tenantId: input.tenantId,
+      branchId: input.branchId ?? undefined,
+      leadId: input.leadId,
+      reason: input.reason,
+      source: 'api',
+    });
+
+    this.realtimePublisher.publishInvalidation({
+      event: REALTIME_INVALIDATION_EVENTS.LEAD_DETAIL_INVALIDATE,
+      tenantId: input.tenantId,
+      branchId: input.branchId ?? undefined,
+      leadId: input.leadId,
+      reason: input.reason,
+      source: 'api',
     });
   }
 

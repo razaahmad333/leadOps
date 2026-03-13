@@ -7,6 +7,7 @@ import {
   HttpStatus,
   Param,
   Patch,
+  ParseUUIDPipe,
   Post,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
@@ -45,7 +46,7 @@ export class RolesController {
   @Get(':id')
   @Permissions('roles.view')
   @ApiOperation({ summary: 'Get role details' })
-  findOne(@Param('id') id: string): Promise<RoleDetail> {
+  findOne(@Param('id', new ParseUUIDPipe()) id: string): Promise<RoleDetail> {
     return this.rolesService.findOne(id);
   }
 
@@ -53,7 +54,7 @@ export class RolesController {
   @Permissions('roles.manage')
   @ApiOperation({ summary: 'Update a tenant-scoped role' })
   update(
-    @Param('id') id: string,
+    @Param('id', new ParseUUIDPipe()) id: string,
     @Body(new ZodValidationPipe(UpdateRoleSchema)) dto: UpdateRoleDto,
   ): Promise<RoleDetail> {
     return this.rolesService.update(id, dto);
@@ -63,7 +64,7 @@ export class RolesController {
   @Permissions('roles.manage')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Delete a tenant-scoped role' })
-  async remove(@Param('id') id: string): Promise<void> {
+  async remove(@Param('id', new ParseUUIDPipe()) id: string): Promise<void> {
     await this.rolesService.remove(id);
   }
 }

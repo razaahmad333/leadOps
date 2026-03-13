@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { Tenant } from '@prisma/client';
+import { Prisma, Tenant } from '@prisma/client';
 import {
   CustomEnquiryField,
   FollowupRules,
@@ -10,15 +10,19 @@ import {
   TenantDisplayConfig,
   TenantDisplayConfigSchema,
   TenantIntakeConfig,
+  TenantLoginBranding,
   TenantProfile,
   TenantSettings,
+  PublicTenantBranding,
   TestPackage,
   UpdateTenantIntakeConfigDto,
+  UpdateTenantSettingsDto,
 } from '@leadops/shared';
 import { fromZonedTime, toZonedTime } from 'date-fns-tz';
 import { PrismaService } from '../prisma/prisma.service';
 import { getTenantContext } from './tenant.store';
 import { getPresetDisplayConfig } from './tenant-presets';
+import { DEFAULT_TENANT_TIMEZONE } from './tenant-defaults';
 
 interface CachedProfile {
   expiresAt: number;
@@ -68,13 +72,14 @@ export class TenantConfigService {
           industryPreset: IndustryPreset.GENERIC,
           configVersion: 1,
           displayConfig: getPresetDisplayConfig(IndustryPreset.GENERIC),
-          timezone: 'Asia/Jakarta',
+          timezone: DEFAULT_TENANT_TIMEZONE,
           businessStart: '09:00',
           businessEnd: '18:00',
           stages: ['New', 'Contacted', 'Qualified', 'Pending', 'Won', 'Lost'],
           reminderRules: {
             firstReminderMinutes: 30,
             escalationMinutes: 120,
+            postReportFollowupDays: 3,
           },
           templates: [],
           featureFlags: {
@@ -133,13 +138,14 @@ export class TenantConfigService {
         : null;
 
     return {
-      timezone: configRecord?.timezone ?? 'Asia/Jakarta',
+      timezone: configRecord?.timezone ?? DEFAULT_TENANT_TIMEZONE,
       businessStart: configRecord?.businessStart ?? '09:00',
       businessEnd: configRecord?.businessEnd ?? '18:00',
       stages: profile.displayConfig.pipelineConfig.stages.map((stage) => stage.label),
       reminderRules: {
         firstReminderMinutes: profile.displayConfig.followupRules.firstReminderMinutes,
         escalationMinutes: profile.displayConfig.followupRules.escalationMinutes,
+        postReportFollowupDays: profile.displayConfig.followupRules.postReportFollowupDays,
       },
       templates:
         configRecord && Array.isArray(configRecord.templates)
@@ -155,6 +161,37 @@ export class TenantConfigService {
     return {
       customEnquiryFields: profile.displayConfig.customEnquiryFields,
       testPackages: profile.displayConfig.testPackages,
+    };
+  }
+
+  async getPublicTenantBranding(tenantSlug: string): Promise<PublicTenantBranding> {
+    const normalizedSlug = tenantSlug.trim().toLowerCase();
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { slug: normalizedSlug },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+      },
+    });
+
+    if (!tenant) {
+      throw new NotFoundException('Tenant not found');
+    }
+
+    const profile = await this.getTenantProfile(tenant.id);
+    const presetBranding = getPresetDisplayConfig(profile.industryPreset).loginBranding;
+    const branding = this.resolvePublicBranding({
+      tenantName: tenant.name,
+      branding: profile.displayConfig.loginBranding,
+      presetBranding: presetBranding ?? null,
+      logoFallback: profile.displayConfig.themeConfig?.logoMarkUrl,
+    });
+
+    return {
+      tenantName: tenant.name,
+      tenantSlug: tenant.slug,
+      branding,
     };
   }
 
@@ -188,6 +225,100 @@ export class TenantConfigService {
       customEnquiryFields: nextDisplayConfig.customEnquiryFields,
       testPackages: nextDisplayConfig.testPackages,
     };
+  }
+
+  async updateSettings(
+    input: UpdateTenantSettingsDto,
+    tenantId?: string,
+    actorId?: string,
+  ): Promise<TenantSettings> {
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    if (!resolvedTenantId || resolvedTenantId === 'system') {
+      throw new BadRequestException('Tenant context missing');
+    }
+
+    const profile = await this.getTenantProfile(resolvedTenantId);
+    const configRecord = await this.prisma.tenantConfig.findUnique({
+      where: { tenantId: resolvedTenantId },
+    });
+
+    if (!configRecord) {
+      throw new NotFoundException('Tenant config not found');
+    }
+
+    const currentTimezone = configRecord.timezone || DEFAULT_TENANT_TIMEZONE;
+    const currentBusinessStart = configRecord.businessStart || '09:00';
+    const currentBusinessEnd = configRecord.businessEnd || '18:00';
+
+    const nextTimezone = input.timezone?.trim() || currentTimezone;
+    const nextBusinessStart = input.businessStart ?? currentBusinessStart;
+    const nextBusinessEnd = input.businessEnd ?? currentBusinessEnd;
+
+    this.assertValidTimeZone(nextTimezone);
+    this.assertValidBusinessWindow(nextBusinessStart, nextBusinessEnd);
+
+    const currentRules = profile.displayConfig.followupRules;
+    const nextRules = {
+      ...currentRules,
+      ...(input.reminderRules?.firstReminderMinutes !== undefined
+        ? { firstReminderMinutes: input.reminderRules.firstReminderMinutes }
+        : {}),
+      ...(input.reminderRules?.escalationMinutes !== undefined
+        ? { escalationMinutes: input.reminderRules.escalationMinutes }
+        : {}),
+      ...(input.reminderRules?.postReportFollowupDays !== undefined
+        ? { postReportFollowupDays: input.reminderRules.postReportFollowupDays }
+        : {}),
+    };
+
+    const changedFields = this.collectSettingsDiff({
+      currentTimezone,
+      currentBusinessStart,
+      currentBusinessEnd,
+      currentRules,
+      nextTimezone,
+      nextBusinessStart,
+      nextBusinessEnd,
+      nextRules,
+    });
+
+    if (Object.keys(changedFields).length === 0) {
+      return this.getSettings(resolvedTenantId);
+    }
+
+    const nextDisplayConfig = {
+      ...profile.displayConfig,
+      followupRules: nextRules,
+    };
+
+    await this.prisma.tenantConfig.update({
+      where: { tenantId: resolvedTenantId },
+      data: {
+        timezone: nextTimezone,
+        businessStart: nextBusinessStart,
+        businessEnd: nextBusinessEnd,
+        reminderRules: {
+          firstReminderMinutes: nextRules.firstReminderMinutes,
+          escalationMinutes: nextRules.escalationMinutes,
+          postReportFollowupDays: nextRules.postReportFollowupDays,
+        },
+        displayConfig: nextDisplayConfig,
+      },
+    });
+
+    await this.prisma.tenantAuditEvent.create({
+      data: {
+        tenantId: resolvedTenantId,
+        actorId: actorId ?? null,
+        entityType: 'TENANT_SETTINGS',
+        entityId: resolvedTenantId,
+        action: 'tenant.settings.updated',
+        metadata: changedFields as Prisma.InputJsonValue,
+      },
+    });
+
+    this.invalidate(resolvedTenantId);
+    return this.getSettings(resolvedTenantId);
   }
 
   async getDefaultStage(tenantId?: string): Promise<PipelineStage> {
@@ -384,7 +515,7 @@ export class TenantConfigService {
     }
 
     const configVersion = tenant.config?.configVersion ?? 1;
-    const timezone = tenant.config?.timezone ?? 'Asia/Jakarta';
+    const timezone = tenant.config?.timezone ?? DEFAULT_TENANT_TIMEZONE;
     const businessStart = tenant.config?.businessStart ?? '09:00';
     const businessEnd = tenant.config?.businessEnd ?? '18:00';
 
@@ -566,5 +697,122 @@ export class TenantConfigService {
   private parseTime(value: string): [number, number] {
     const [hours, minutes] = value.split(':').map((part) => parseInt(part, 10));
     return [Number.isFinite(hours) ? hours : 9, Number.isFinite(minutes) ? minutes : 0];
+  }
+
+  private assertValidTimeZone(value: string): void {
+    try {
+      Intl.DateTimeFormat('en-US', { timeZone: value }).format();
+    } catch {
+      throw new BadRequestException('Invalid timezone. Use an IANA timezone value');
+    }
+  }
+
+  private assertValidBusinessWindow(start: string, end: string): void {
+    const timePattern = /^([01]\d|2[0-3]):[0-5]\d$/;
+    if (!timePattern.test(start) || !timePattern.test(end)) {
+      throw new BadRequestException('Business window must use HH:mm (24-hour format)');
+    }
+
+    const [startHour, startMinute] = this.parseTime(start);
+    const [endHour, endMinute] = this.parseTime(end);
+    const startMinutes = startHour * 60 + startMinute;
+    const endMinutes = endHour * 60 + endMinute;
+
+    if (startMinutes >= endMinutes) {
+      throw new BadRequestException('businessStart must be earlier than businessEnd');
+    }
+  }
+
+  private collectSettingsDiff(input: {
+    currentTimezone: string;
+    currentBusinessStart: string;
+    currentBusinessEnd: string;
+    currentRules: FollowupRules;
+    nextTimezone: string;
+    nextBusinessStart: string;
+    nextBusinessEnd: string;
+    nextRules: FollowupRules;
+  }): Record<string, unknown> {
+    const changes: Record<string, unknown> = {};
+
+    if (input.currentTimezone !== input.nextTimezone) {
+      changes.timezone = { from: input.currentTimezone, to: input.nextTimezone };
+    }
+
+    if (input.currentBusinessStart !== input.nextBusinessStart) {
+      changes.businessStart = { from: input.currentBusinessStart, to: input.nextBusinessStart };
+    }
+
+    if (input.currentBusinessEnd !== input.nextBusinessEnd) {
+      changes.businessEnd = { from: input.currentBusinessEnd, to: input.nextBusinessEnd };
+    }
+
+    if (input.currentRules.firstReminderMinutes !== input.nextRules.firstReminderMinutes) {
+      changes.firstReminderMinutes = {
+        from: input.currentRules.firstReminderMinutes,
+        to: input.nextRules.firstReminderMinutes,
+      };
+    }
+
+    if (input.currentRules.escalationMinutes !== input.nextRules.escalationMinutes) {
+      changes.escalationMinutes = {
+        from: input.currentRules.escalationMinutes,
+        to: input.nextRules.escalationMinutes,
+      };
+    }
+
+    if (input.currentRules.postReportFollowupDays !== input.nextRules.postReportFollowupDays) {
+      changes.postReportFollowupDays = {
+        from: input.currentRules.postReportFollowupDays,
+        to: input.nextRules.postReportFollowupDays,
+      };
+    }
+
+    return changes;
+  }
+
+  private resolvePublicBranding(input: {
+    tenantName: string;
+    branding: TenantLoginBranding | undefined;
+    presetBranding: TenantLoginBranding | null;
+    logoFallback: string | undefined;
+  }): TenantLoginBranding {
+    const fallback: TenantLoginBranding = input.presetBranding ?? {
+      eyebrow: 'HikmahOne',
+      headline: 'Welcome to your workspace',
+      subheadline: 'Sign in to continue.',
+      highlightOneLabel: 'Workspace',
+      highlightOneText: 'Track every enquiry',
+      highlightTwoLabel: 'Follow-ups',
+      highlightTwoText: 'Stay on top of due tasks',
+      calloutTitle: 'Built for operations',
+      calloutText: 'Bring team visibility and execution into one focused workspace.',
+    };
+
+    const merged: TenantLoginBranding = {
+      ...fallback,
+      ...(input.branding ?? {}),
+    };
+
+    if (!merged.logoUrl && input.logoFallback) {
+      if (this.isSafePublicLogoUrl(input.logoFallback)) {
+        merged.logoUrl = input.logoFallback;
+      }
+    }
+
+    if (!merged.logoAlt) {
+      merged.logoAlt = `${input.tenantName} logo`;
+    }
+
+    return merged;
+  }
+
+  private isSafePublicLogoUrl(value: string): boolean {
+    try {
+      const parsed = new URL(value);
+      return parsed.protocol === 'https:' || parsed.protocol === 'http:';
+    } catch {
+      return false;
+    }
   }
 }

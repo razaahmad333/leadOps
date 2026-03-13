@@ -71,7 +71,7 @@ export function DashboardPage(): React.JSX.Element {
 
   return (
     <div className="space-y-5">
-      <Card className="overflow-hidden border-white/80 bg-card/90">
+      <Card data-tour-id="dashboard-overview" className="overflow-hidden border-white/80 bg-card/90">
         <CardContent className="p-5 sm:p-6">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>

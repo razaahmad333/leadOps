@@ -53,7 +53,6 @@ export class HttpExceptionFilter implements ExceptionFilter {
         path: request.url,
         method: request.method,
         requestId: request.requestId ?? tenantContext?.requestId,
-        tenantId: tenantContext?.tenantId,
       },
     };
 

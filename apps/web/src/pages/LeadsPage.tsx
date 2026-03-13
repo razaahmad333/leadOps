@@ -1,9 +1,25 @@
-import React, { useEffect, useMemo, useState, type FormEvent } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { MessageSquarePlus, Plus, Search } from 'lucide-react';
-import type { Lead, LeadDetail, LeadFieldConfig, PipelineStage } from '@leadops/shared';
+import {
+  REALTIME_INVALIDATION_EVENTS,
+  type Branch,
+  type Lead,
+  type LeadDetail,
+  type LeadFieldConfig,
+  type LeadListResponse,
+  type PipelineStage,
+} from '@leadops/shared';
 import { toast } from 'sonner';
 import { api } from '../lib/api';
+import { useAuth } from '../context/AuthContext';
+import { useRealtime } from '../context/RealtimeContext';
 import { useTenant } from '../context/TenantContext';
+import { useDebouncedValue } from '../hooks/use-debounced-value';
+import {
+  buildAccessibleBranches,
+  resolveBranchFilterValue,
+  resolveCreateBranchDefault,
+} from '../lib/branch-scope';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
@@ -18,6 +34,7 @@ type FormValue = string | boolean;
 type FormState = Record<string, FormValue>;
 
 const CORE_FIELD_KEYS = new Set(['name', 'email', 'phone', 'nextFollowUpAt', 'note', 'source']);
+const PAGE_SIZE = 20;
 
 function statusVariant(status: Lead['status']): 'default' | 'success' | 'warning' | 'danger' | 'secondary' {
   if (status === 'WON') return 'success';
@@ -234,11 +251,18 @@ function renderField(
 }
 
 export function LeadsPage(): React.JSX.Element {
+  const { user, selectedBranchId } = useAuth();
+  const { subscribeInvalidation, joinLeadRoom, leaveLeadRoom } = useRealtime();
   const { dictionary, profile } = useTenant();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
+  const debouncedQuery = useDebouncedValue(query.trim(), 350);
   const [stageFilter, setStageFilter] = useState<string>('ALL');
+  const [branchFilter, setBranchFilter] = useState<string>('ALL');
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
 
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [selectedLeadDetail, setSelectedLeadDetail] = useState<LeadDetail | null>(null);
@@ -248,10 +272,15 @@ export function LeadsPage(): React.JSX.Element {
   const [creating, setCreating] = useState(false);
   const [createForm, setCreateForm] = useState<FormState>({});
   const [createStageKey, setCreateStageKey] = useState<string>('');
+  const [createBranchId, setCreateBranchId] = useState<string>('');
 
   const [stageDraft, setStageDraft] = useState<string>('');
   const [followupDraft, setFollowupDraft] = useState('');
   const [noteDraft, setNoteDraft] = useState('');
+  const [realtimeLeadsVersion, setRealtimeLeadsVersion] = useState(0);
+  const [realtimeDetailVersion, setRealtimeDetailVersion] = useState(0);
+  const leadsRealtimeTimerRef = useRef<number | null>(null);
+  const detailRealtimeTimerRef = useRef<number | null>(null);
 
   const sortedStages = useMemo(
     () => [...dictionary.pipelineStages].sort((a, b) => a.order - b.order),
@@ -267,17 +296,64 @@ export function LeadsPage(): React.JSX.Element {
     () => dictionary.leadFields.filter((field) => field.section === 'intake'),
     [dictionary.leadFields],
   );
+  const accessibleBranches = useMemo<Branch[]>(() => buildAccessibleBranches(user), [user]);
+  const branchNameById = useMemo(() => {
+    return new Map(accessibleBranches.map((branch) => [branch.id, branch.name]));
+  }, [accessibleBranches]);
+  const branchOptions = useMemo(
+    () => accessibleBranches.map((branch) => ({ id: branch.id, name: branch.name })),
+    [accessibleBranches],
+  );
+  const canChooseBranch = accessibleBranches.length > 1;
 
-  const loadLeads = (): void => {
+  const loadLeads = useCallback((): void => {
     setLoading(true);
+    const params = new URLSearchParams({
+      page: String(page),
+      pageSize: String(PAGE_SIZE),
+    });
+
+    if (debouncedQuery) {
+      params.set('search', debouncedQuery);
+    }
+
+    if (stageFilter !== 'ALL') {
+      params.set('stageKey', stageFilter);
+    }
+
+    if (canChooseBranch && branchFilter !== 'ALL') {
+      params.set('branchId', branchFilter);
+    }
+
     api
-      .get<Lead[]>('/v1/leads')
-      .then(setLeads)
+      .get<LeadListResponse>(`/v1/leads?${params.toString()}`)
+      .then((response) => {
+        if (response.total > 0 && page > response.totalPages) {
+          setPage(response.totalPages);
+          return;
+        }
+
+        setLeads(response.items);
+        setTotal(response.total);
+        setTotalPages(response.totalPages);
+      })
       .catch((error) => {
         toast.error(error instanceof Error ? error.message : `Failed to load ${dictionary.labels.leadPlural.toLowerCase()}`);
+        setLeads([]);
+        setTotal(0);
+        setTotalPages(1);
       })
       .finally(() => setLoading(false));
-  };
+  }, [
+    branchFilter,
+    canChooseBranch,
+    debouncedQuery,
+    dictionary.labels.leadPlural,
+    page,
+    profile?.tenantId,
+    selectedBranchId,
+    stageFilter,
+  ]);
 
   const loadLeadDetail = (id: string): void => {
     setDetailLoading(true);
@@ -301,10 +377,34 @@ export function LeadsPage(): React.JSX.Element {
   }, [dictionary.leadFields, sortedStages]);
 
   useEffect(() => {
+    setCreateBranchId((current) => {
+      return resolveCreateBranchDefault(
+        current,
+        selectedBranchId,
+        user?.defaultBranchId,
+        branchOptions,
+      );
+    });
+  }, [branchOptions, selectedBranchId, user?.defaultBranchId]);
+
+  useEffect(() => {
+    setBranchFilter((current) => {
+      return resolveBranchFilterValue(current, selectedBranchId, branchOptions);
+    });
+  }, [branchOptions, selectedBranchId]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [branchFilter, debouncedQuery, profile?.tenantId, selectedBranchId, stageFilter]);
+
+  useEffect(() => {
     loadLeads();
+  }, [loadLeads, realtimeLeadsVersion]);
+
+  useEffect(() => {
     setSelectedLeadId(null);
     setSelectedLeadDetail(null);
-  }, [profile?.tenantId]);
+  }, [profile?.tenantId, selectedBranchId]);
 
   useEffect(() => {
     if (!selectedLeadId) {
@@ -313,22 +413,66 @@ export function LeadsPage(): React.JSX.Element {
     }
 
     loadLeadDetail(selectedLeadId);
-  }, [selectedLeadId, profile?.tenantId]);
+  }, [selectedLeadId, profile?.tenantId, realtimeDetailVersion, selectedBranchId]);
 
-  const filtered = useMemo(() => {
-    return leads.filter((lead) => {
-      const normalized = query.toLowerCase().trim();
-      const matchesQuery =
-        !normalized ||
-        lead.name.toLowerCase().includes(normalized) ||
-        (lead.phone ?? '').toLowerCase().includes(normalized);
+  useEffect(() => {
+    if (!selectedLeadId) {
+      return;
+    }
 
-      const currentStage = inferStageKey(lead, sortedStages);
-      const matchesStage = stageFilter === 'ALL' ? true : currentStage === stageFilter;
+    joinLeadRoom(selectedLeadId);
+    return () => {
+      leaveLeadRoom(selectedLeadId);
+    };
+  }, [joinLeadRoom, leaveLeadRoom, selectedLeadId]);
 
-      return matchesQuery && matchesStage;
+  useEffect(() => {
+    return subscribeInvalidation((event) => {
+      if (!user || event.tenantId !== user.tenantId) {
+        return;
+      }
+
+      if (selectedBranchId && event.branchId && event.branchId !== selectedBranchId) {
+        return;
+      }
+
+      if (event.event === REALTIME_INVALIDATION_EVENTS.LEADS_INVALIDATE) {
+        if (leadsRealtimeTimerRef.current) {
+          window.clearTimeout(leadsRealtimeTimerRef.current);
+        }
+
+        leadsRealtimeTimerRef.current = window.setTimeout(() => {
+          setRealtimeLeadsVersion((current) => current + 1);
+        }, 250);
+        return;
+      }
+
+      if (
+        event.event === REALTIME_INVALIDATION_EVENTS.LEAD_DETAIL_INVALIDATE
+        && selectedLeadId
+        && event.leadId === selectedLeadId
+      ) {
+        if (detailRealtimeTimerRef.current) {
+          window.clearTimeout(detailRealtimeTimerRef.current);
+        }
+
+        detailRealtimeTimerRef.current = window.setTimeout(() => {
+          setRealtimeDetailVersion((current) => current + 1);
+        }, 250);
+      }
     });
-  }, [leads, query, sortedStages, stageFilter]);
+  }, [selectedBranchId, selectedLeadId, subscribeInvalidation, user]);
+
+  useEffect(() => {
+    return () => {
+      if (leadsRealtimeTimerRef.current) {
+        window.clearTimeout(leadsRealtimeTimerRef.current);
+      }
+      if (detailRealtimeTimerRef.current) {
+        window.clearTimeout(detailRealtimeTimerRef.current);
+      }
+    };
+  }, []);
 
   const createLead = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
@@ -399,6 +543,7 @@ export function LeadsPage(): React.JSX.Element {
       await api.post('/v1/leads', {
         name,
         stageKey: createStageKey || undefined,
+        branchId: createBranchId || undefined,
         nextFollowUpAt: nextFollowUpAtIso,
         email: String(createForm.email ?? '').trim() || undefined,
         phone: String(createForm.phone ?? '').trim() || undefined,
@@ -468,7 +613,7 @@ export function LeadsPage(): React.JSX.Element {
           </p>
         </div>
 
-        <Button onClick={() => setFormOpen((open) => !open)} className="w-full sm:w-auto">
+        <Button data-tour-id="leads-create-button" onClick={() => setFormOpen((open) => !open)} className="w-full sm:w-auto">
           <Plus className="h-4 w-4" />
           {formOpen ? 'Close form' : `New ${leadSingularLower}`}
         </Button>
@@ -497,6 +642,24 @@ export function LeadsPage(): React.JSX.Element {
                     ))}
                   </select>
                 </div>
+                {canChooseBranch ? (
+                  <div className="space-y-2">
+                    <Label htmlFor="create-branch">Branch</Label>
+                    <select
+                      id="create-branch"
+                      value={createBranchId}
+                      onChange={(event) => setCreateBranchId(event.target.value)}
+                      className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                    >
+                      <option value="">Select branch</option>
+                      {accessibleBranches.map((branch) => (
+                        <option key={branch.id} value={branch.id}>
+                          {branch.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ) : null}
               </div>
 
               <div className="grid gap-4 sm:grid-cols-2">
@@ -533,12 +696,13 @@ export function LeadsPage(): React.JSX.Element {
         </Card>
       ) : null}
 
-      <Card className="rounded-3xl border-white/80 bg-card/95">
+      <Card data-tour-id="leads-list" className="rounded-3xl border-white/80 bg-card/95">
         <CardContent className="space-y-4 p-6">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
             <div className="relative w-full lg:max-w-sm">
               <Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
               <Input
+                data-tour-id="leads-search"
                 placeholder={`Search ${leadSingularLower}`}
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
@@ -557,6 +721,20 @@ export function LeadsPage(): React.JSX.Element {
                 </option>
               ))}
             </select>
+            {canChooseBranch ? (
+              <select
+                value={branchFilter}
+                onChange={(event) => setBranchFilter(event.target.value)}
+                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm lg:w-auto"
+              >
+                <option value="ALL">All branches</option>
+                {accessibleBranches.map((branch) => (
+                  <option key={branch.id} value={branch.id}>
+                    {branch.name}
+                  </option>
+                ))}
+              </select>
+            ) : null}
           </div>
 
           {loading ? (
@@ -565,7 +743,7 @@ export function LeadsPage(): React.JSX.Element {
                 <Skeleton key={index} className="h-12 w-full" />
               ))}
             </div>
-          ) : filtered.length === 0 ? (
+          ) : leads.length === 0 ? (
             <div className="rounded-lg border border-dashed p-10 text-center">
               <p className="font-semibold">No {leadPluralLower} found</p>
               <p className="mt-1 text-sm text-muted-foreground">{dictionary.labels.emptyLeads}</p>
@@ -573,7 +751,7 @@ export function LeadsPage(): React.JSX.Element {
           ) : (
             <>
               <div className="space-y-3 md:hidden">
-                {filtered.map((lead) => (
+                {leads.map((lead) => (
                   <button
                     key={lead.id}
                     type="button"
@@ -591,6 +769,12 @@ export function LeadsPage(): React.JSX.Element {
                     </div>
 
                     <div className="mt-3 grid gap-2 text-sm text-muted-foreground">
+                      {canChooseBranch ? (
+                        <p>
+                          <span className="font-medium text-foreground">Branch:</span>{' '}
+                          {lead.branchId ? (branchNameById.get(lead.branchId) ?? 'Unknown branch') : 'Unassigned'}
+                        </p>
+                      ) : null}
                       <p>
                         <span className="font-medium text-foreground">{dictionary.labels.followupLabel}:</span>{' '}
                         {lead.nextFollowUpAt ? new Date(lead.nextFollowUpAt).toLocaleString() : 'N/A'}
@@ -610,6 +794,7 @@ export function LeadsPage(): React.JSX.Element {
                   <TableHeader>
                     <TableRow>
                       <TableHead>{dictionary.labels.leadSingular}</TableHead>
+                      {canChooseBranch ? <TableHead>Branch</TableHead> : null}
                       <TableHead>{dictionary.labels.stageLabel}</TableHead>
                       <TableHead>{dictionary.labels.followupLabel}</TableHead>
                       <TableHead>Contact</TableHead>
@@ -619,13 +804,16 @@ export function LeadsPage(): React.JSX.Element {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filtered.map((lead) => (
+                    {leads.map((lead) => (
                       <TableRow
                         key={lead.id}
                         className="cursor-pointer"
                         onClick={() => setSelectedLeadId(lead.id)}
                       >
                         <TableCell className="font-semibold">{lead.name}</TableCell>
+                        {canChooseBranch ? (
+                          <TableCell>{lead.branchId ? (branchNameById.get(lead.branchId) ?? 'Unknown branch') : 'Unassigned'}</TableCell>
+                        ) : null}
                         <TableCell>
                           <Badge variant={statusVariant(lead.status)}>
                             {statusLabel(lead, sortedStages, dictionary.labels.statusLabels)}
@@ -643,6 +831,33 @@ export function LeadsPage(): React.JSX.Element {
                     ))}
                   </TableBody>
                 </Table>
+              </div>
+              <div className="flex flex-col gap-2 border-t border-white/60 pt-3 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-xs text-muted-foreground">
+                  Showing {total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1}-
+                  {total === 0 ? 0 : Math.min(page * PAGE_SIZE, total)} of {total}
+                </p>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPage((current) => Math.max(1, current - 1))}
+                    disabled={loading || page <= 1}
+                  >
+                    Previous
+                  </Button>
+                  <p className="text-xs text-muted-foreground">
+                    Page {page} of {totalPages}
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
+                    disabled={loading || page >= totalPages}
+                  >
+                    Next
+                  </Button>
+                </div>
               </div>
             </>
           )}

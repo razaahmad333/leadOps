@@ -2,9 +2,11 @@ import React, { useEffect, useMemo, useState } from 'react';
 import type {
   Branch,
   BranchScopeType,
+  CreateBranchDto,
   CreateUserDto,
   RoleSummary,
   TeamUser,
+  UpdateBranchDto,
   UpdateUserDto,
   UserStatus,
 } from '@leadops/shared';
@@ -32,10 +34,13 @@ import {
 } from '../../components/ui/dialog';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
+import { PasswordInput } from '../../components/ui/password-input';
+import { PasswordStrengthHints } from '../../components/ui/password-strength-hints';
 import { Select } from '../../components/ui/select';
 import { Skeleton } from '../../components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
+import { Textarea } from '../../components/ui/textarea';
 
 const BRANCH_SCOPE = {
   ALL_BRANCHES: 'ALL_BRANCHES' as BranchScopeType,
@@ -60,6 +65,11 @@ interface TeamFormState {
   status: UserStatus;
 }
 
+interface BranchFormState {
+  name: string;
+  description: string;
+}
+
 function emptyForm(): TeamFormState {
   return {
     name: '',
@@ -75,6 +85,13 @@ function emptyForm(): TeamFormState {
   };
 }
 
+function emptyBranchForm(): BranchFormState {
+  return {
+    name: '',
+    description: '',
+  };
+}
+
 function branchSummary(user: TeamUser): string {
   if (user.branchScope.scopeType === BRANCH_SCOPE.ALL_BRANCHES) {
     return 'All branches';
@@ -87,10 +104,15 @@ function statusVariant(status: UserStatus): 'success' | 'secondary' {
   return status === USER_STATUS.ACTIVE ? 'success' : 'secondary';
 }
 
+function branchStatusVariant(isActive: boolean): 'success' | 'secondary' {
+  return isActive ? 'success' : 'secondary';
+}
+
 export function TeamPage(): React.JSX.Element {
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, can } = useAuth();
   const { dictionary } = useTenant();
   const adminLabel = dictionary.isDiagnosticsLab ? 'Lab Admin' : 'Tenant Admin';
+  const canManageBranches = can('branches.manage');
 
   const [users, setUsers] = useState<TeamUser[]>([]);
   const [roles, setRoles] = useState<RoleSummary[]>([]);
@@ -100,9 +122,16 @@ export function TeamPage(): React.JSX.Element {
   const [roleFilter, setRoleFilter] = useState('ALL');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'INACTIVE'>('ALL');
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [branchDialogOpen, setBranchDialogOpen] = useState(false);
+  const [editBranchDialogOpen, setEditBranchDialogOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [creatingBranch, setCreatingBranch] = useState(false);
+  const [updatingBranch, setUpdatingBranch] = useState(false);
+  const [togglingBranchId, setTogglingBranchId] = useState<string | null>(null);
   const [editingUser, setEditingUser] = useState<TeamUser | null>(null);
+  const [editingBranch, setEditingBranch] = useState<Branch | null>(null);
   const [form, setForm] = useState<TeamFormState>(emptyForm);
+  const [branchForm, setBranchForm] = useState<BranchFormState>(emptyBranchForm);
   const [formError, setFormError] = useState<string | null>(null);
 
   const loadData = async (): Promise<void> => {
@@ -133,7 +162,7 @@ export function TeamPage(): React.JSX.Element {
     return users.filter((user) => {
       const matchesQuery =
         query.trim().length === 0
-        || `${user.name} ${user.email}`.toLowerCase().includes(query.trim().toLowerCase());
+        || `${user.name} ${user.email} ${user.phone ?? ''}`.toLowerCase().includes(query.trim().toLowerCase());
       const matchesRole =
         roleFilter === 'ALL'
         || user.roles.some((role) => role.id === roleFilter);
@@ -150,6 +179,98 @@ export function TeamPage(): React.JSX.Element {
     setForm(emptyForm());
     setFormError(null);
     setDialogOpen(true);
+  };
+
+  const openCreateBranchDialog = (): void => {
+    setBranchForm(emptyBranchForm());
+    setBranchDialogOpen(true);
+  };
+
+  const createBranch = async (): Promise<void> => {
+    if (!canManageBranches) {
+      return;
+    }
+
+    const name = branchForm.name.trim();
+    if (name.length < 2) {
+      toast.error('Branch name must be at least 2 characters');
+      return;
+    }
+
+    setCreatingBranch(true);
+
+    try {
+      const payload: CreateBranchDto = {
+        name,
+        description: branchForm.description.trim() || undefined,
+      };
+      await api.post<Branch>('/v1/branches', payload);
+      toast.success('Branch created');
+      setBranchForm(emptyBranchForm());
+      setBranchDialogOpen(false);
+      await loadData();
+    } catch (requestError) {
+      toast.error(requestError instanceof Error ? requestError.message : 'Failed to create branch');
+    } finally {
+      setCreatingBranch(false);
+    }
+  };
+
+  const openEditBranchDialog = (branch: Branch): void => {
+    setEditingBranch(branch);
+    setBranchForm({
+      name: branch.name,
+      description: branch.description ?? '',
+    });
+    setEditBranchDialogOpen(true);
+  };
+
+  const updateBranch = async (): Promise<void> => {
+    if (!canManageBranches || !editingBranch) {
+      return;
+    }
+
+    const name = branchForm.name.trim();
+    if (name.length < 2) {
+      toast.error('Branch name must be at least 2 characters');
+      return;
+    }
+
+    setUpdatingBranch(true);
+    try {
+      const payload: UpdateBranchDto = {
+        name,
+        description: branchForm.description.trim() || null,
+      };
+      await api.patch<Branch>(`/v1/branches/${editingBranch.id}`, payload);
+      toast.success('Branch updated');
+      setEditBranchDialogOpen(false);
+      setEditingBranch(null);
+      setBranchForm(emptyBranchForm());
+      await loadData();
+    } catch (requestError) {
+      toast.error(requestError instanceof Error ? requestError.message : 'Failed to update branch');
+    } finally {
+      setUpdatingBranch(false);
+    }
+  };
+
+  const toggleBranchStatus = async (branch: Branch): Promise<void> => {
+    if (!canManageBranches) {
+      return;
+    }
+
+    setTogglingBranchId(branch.id);
+    try {
+      const payload: UpdateBranchDto = { isActive: !branch.isActive };
+      await api.patch<Branch>(`/v1/branches/${branch.id}`, payload);
+      toast.success(branch.isActive ? 'Branch deactivated' : 'Branch activated');
+      await loadData();
+    } catch (requestError) {
+      toast.error(requestError instanceof Error ? requestError.message : 'Failed to update branch status');
+    } finally {
+      setTogglingBranchId(null);
+    }
   };
 
   const openEditDialog = (user: TeamUser): void => {
@@ -297,10 +418,22 @@ export function TeamPage(): React.JSX.Element {
             Manage tenant users, scoped access, and the {adminLabel.toLowerCase()} full-access flag.
           </p>
         </div>
-        <Button onClick={openCreateDialog} className="gap-2 self-start w-full sm:w-auto">
-          <Plus className="h-4 w-4" />
-          Create User
-        </Button>
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+          {canManageBranches ? (
+            <Button
+              variant="outline"
+              onClick={openCreateBranchDialog}
+              className="gap-2 w-full sm:w-auto"
+            >
+              <Plus className="h-4 w-4" />
+              Add Branch
+            </Button>
+          ) : null}
+          <Button data-tour-id="team-create-user" onClick={openCreateDialog} className="gap-2 w-full sm:w-auto">
+            <Plus className="h-4 w-4" />
+            Create User
+          </Button>
+        </div>
       </div>
 
       <Card className="rounded-3xl border-white/80 bg-card/95">
@@ -313,7 +446,7 @@ export function TeamPage(): React.JSX.Element {
             <Input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search by name or email"
+              placeholder="Search by name, email, or phone"
             />
             <Select value={roleFilter} onChange={(event) => setRoleFilter(event.target.value)}>
               <option value="ALL">All roles</option>
@@ -358,6 +491,7 @@ export function TeamPage(): React.JSX.Element {
                           <div className="min-w-0">
                             <p className="truncate font-semibold">{user.name}</p>
                             <p className="mt-1 truncate text-xs text-muted-foreground">{user.email}</p>
+                            <p className="mt-1 truncate text-xs text-muted-foreground">{user.phone ?? 'No phone'}</p>
                             {user.isSuperAdmin ? (
                               <p className="mt-1 text-xs text-muted-foreground">Platform super admin</p>
                             ) : null}
@@ -410,6 +544,7 @@ export function TeamPage(): React.JSX.Element {
                         <TableRow>
                           <TableHead>Name</TableHead>
                           <TableHead>Email</TableHead>
+                          <TableHead>Phone</TableHead>
                           <TableHead>Role(s)</TableHead>
                           <TableHead>{adminLabel}</TableHead>
                           <TableHead>Status</TableHead>
@@ -429,6 +564,7 @@ export function TeamPage(): React.JSX.Element {
                               </div>
                             </TableCell>
                             <TableCell className="text-sm text-muted-foreground">{user.email}</TableCell>
+                            <TableCell className="text-sm text-muted-foreground">{user.phone ?? 'N/A'}</TableCell>
                             <TableCell>
                               <div className="flex flex-wrap gap-2">
                                 {user.roleNames.map((roleName) => (
@@ -486,6 +622,166 @@ export function TeamPage(): React.JSX.Element {
         </CardContent>
       </Card>
 
+      <Card className="rounded-3xl border-white/80 bg-card/95">
+        <CardHeader>
+          <CardTitle>Branches</CardTitle>
+          <CardDescription>
+            View branch list, update descriptions, and activate/deactivate branches.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {branches.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No branches found.</p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Description</TableHead>
+                  <TableHead>Status</TableHead>
+                  {canManageBranches ? <TableHead className="text-right">Actions</TableHead> : null}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {branches.map((branch) => (
+                  <TableRow key={branch.id}>
+                    <TableCell className="font-medium">{branch.name}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {branch.description?.trim() || 'No description'}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={branchStatusVariant(branch.isActive)}>
+                        {branch.isActive ? 'ACTIVE' : 'INACTIVE'}
+                      </Badge>
+                    </TableCell>
+                    {canManageBranches ? (
+                      <TableCell>
+                        <div className="flex justify-end gap-2">
+                          <Button variant="outline" size="sm" onClick={() => openEditBranchDialog(branch)}>
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            disabled={togglingBranchId === branch.id}
+                            onClick={() => void toggleBranchStatus(branch)}
+                          >
+                            {branch.isActive ? 'Deactivate' : 'Activate'}
+                          </Button>
+                        </div>
+                      </TableCell>
+                    ) : null}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      <Dialog
+        open={branchDialogOpen}
+        onOpenChange={(open) => {
+          setBranchDialogOpen(open);
+          if (!open) {
+            setBranchForm(emptyBranchForm());
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add Branch</DialogTitle>
+            <DialogDescription>
+              Create a new branch for branch-scoped access and lead assignment.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="branch-name">Branch Name</Label>
+              <Input
+                id="branch-name"
+                value={branchForm.name}
+                onChange={(event) => setBranchForm((current) => ({ ...current, name: event.target.value }))}
+                placeholder="e.g. Downtown Lab"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="branch-description">Description</Label>
+              <Textarea
+                id="branch-description"
+                value={branchForm.description}
+                onChange={(event) => setBranchForm((current) => ({ ...current, description: event.target.value }))}
+                placeholder="Optional branch note for your team"
+                rows={3}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setBranchDialogOpen(false)} disabled={creatingBranch}>
+              Cancel
+            </Button>
+            <Button onClick={() => void createBranch()} disabled={creatingBranch}>
+              {creatingBranch ? 'Creating...' : 'Create Branch'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={editBranchDialogOpen}
+        onOpenChange={(open) => {
+          setEditBranchDialogOpen(open);
+          if (!open) {
+            setEditingBranch(null);
+            setBranchForm(emptyBranchForm());
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Branch</DialogTitle>
+            <DialogDescription>
+              Update branch name and description.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-branch-name">Branch Name</Label>
+              <Input
+                id="edit-branch-name"
+                value={branchForm.name}
+                onChange={(event) => setBranchForm((current) => ({ ...current, name: event.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-branch-description">Description</Label>
+              <Textarea
+                id="edit-branch-description"
+                value={branchForm.description}
+                onChange={(event) => setBranchForm((current) => ({ ...current, description: event.target.value }))}
+                rows={3}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setEditBranchDialogOpen(false);
+                setEditingBranch(null);
+                setBranchForm(emptyBranchForm());
+              }}
+              disabled={updatingBranch}
+            >
+              Cancel
+            </Button>
+            <Button onClick={() => void updateBranch()} disabled={updatingBranch}>
+              {updatingBranch ? 'Saving...' : 'Save Branch'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-h-[92vh] overflow-y-auto">
           <DialogHeader>
@@ -512,6 +808,8 @@ export function TeamPage(): React.JSX.Element {
               <Input
                 id="user-email"
                 type="email"
+                name="team-user-email"
+                autoComplete="off"
                 disabled={!!editingUser}
                 value={form.email}
                 onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
@@ -522,6 +820,9 @@ export function TeamPage(): React.JSX.Element {
               <Label htmlFor="user-phone">Phone</Label>
               <Input
                 id="user-phone"
+                type="tel"
+                name="team-user-phone"
+                autoComplete="off"
                 value={form.phone}
                 onChange={(event) => setForm((current) => ({ ...current, phone: event.target.value }))}
               />
@@ -530,12 +831,17 @@ export function TeamPage(): React.JSX.Element {
             {!editingUser ? (
               <div className="space-y-2">
                 <Label htmlFor="user-password">Password</Label>
-                <Input
+                <PasswordInput
                   id="user-password"
-                  type="password"
+                  name="team-user-password"
+                  autoComplete="new-password"
                   value={form.password}
                   onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))}
                 />
+                {form.password.trim().length > 0 && form.password.trim().length < 8 ? (
+                  <p className="text-xs text-red-600">Password must be at least 8 characters.</p>
+                ) : null}
+                <PasswordStrengthHints password={form.password} />
               </div>
             ) : (
               <div className="space-y-2">
@@ -629,7 +935,8 @@ export function TeamPage(): React.JSX.Element {
                   <Checkbox
                     key={branch.id}
                     checked={form.branchIds.includes(branch.id)}
-                    label={branch.name}
+                    label={branch.isActive ? branch.name : `${branch.name} (inactive)`}
+                    disabled={!branch.isActive && !form.branchIds.includes(branch.id)}
                     onChange={(event) => toggleBranch(branch.id, event.target.checked)}
                   />
                 ))}
@@ -652,7 +959,7 @@ export function TeamPage(): React.JSX.Element {
                     .filter((branch) => form.branchIds.includes(branch.id))
                     .map((branch) => (
                       <option key={branch.id} value={branch.id}>
-                        {branch.name}
+                        {branch.isActive ? branch.name : `${branch.name} (inactive)`}
                       </option>
                     ))}
                 </Select>

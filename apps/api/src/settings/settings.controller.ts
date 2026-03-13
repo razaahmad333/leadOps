@@ -3,8 +3,11 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   AuthUser,
   TenantIntakeConfig,
+  TenantSettings,
   UpdateTenantIntakeConfigDto,
   UpdateTenantIntakeConfigSchema,
+  UpdateTenantSettingsDto,
+  UpdateTenantSettingsSchema,
 } from '@leadops/shared';
 import { Permissions } from '../access-control/permissions.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -24,6 +27,17 @@ export class SettingsController {
     return this.tenantConfig.getSettings();
   }
 
+  @Patch()
+  @Permissions('settings.manage')
+  @ApiOperation({ summary: 'Update tenant business window and reminder settings' })
+  updateTenantSettings(
+    @CurrentUser() user: AuthUser,
+    @Body(new ZodValidationPipe(UpdateTenantSettingsSchema)) dto: UpdateTenantSettingsDto,
+  ): Promise<TenantSettings> {
+    this.ensureTenantAdmin(user);
+    return this.tenantConfig.updateSettings(dto, user.tenantId, user.id);
+  }
+
   @Get('intake-config')
   @Permissions('settings.view')
   @ApiOperation({ summary: 'Get tenant enquiry fields and test packages config' })
@@ -33,7 +47,7 @@ export class SettingsController {
   }
 
   @Patch('intake-config')
-  @Permissions('settings.view')
+  @Permissions('settings.manage')
   @ApiOperation({ summary: 'Update tenant enquiry fields and test packages config' })
   updateIntakeConfig(
     @CurrentUser() user: AuthUser,

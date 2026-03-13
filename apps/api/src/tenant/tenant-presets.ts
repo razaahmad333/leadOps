@@ -122,6 +122,18 @@ const genericDisplayConfig: TenantDisplayConfig = {
     accentColor: '#2f90b7',
     sidebarTitle: 'LeadOps',
   },
+  loginBranding: {
+    eyebrow: 'HikmahOne',
+    headline: 'Run your team with faster follow-ups and fewer missed opportunities.',
+    subheadline:
+      'Track enquiries, status movement, and follow-ups in one focused workspace built for high-velocity operations.',
+    highlightOneLabel: 'Pipeline visibility',
+    highlightOneText: 'See every enquiry in motion',
+    highlightTwoLabel: 'Daily execution',
+    highlightTwoText: 'Act on the right follow-up at the right time',
+    calloutTitle: 'Built for operating teams',
+    calloutText: 'Give owners and staff a clear view of what needs action across your lead pipeline.',
+  },
   featureFlags: {
     aiAssist: true,
   },
@@ -285,6 +297,19 @@ const diagnosticsDisplayConfig: TenantDisplayConfig = {
   themeConfig: {
     accentColor: '#0f7a78',
     sidebarTitle: 'Diagnostics LeadOps',
+  },
+  loginBranding: {
+    eyebrow: 'HikmahOne',
+    headline: 'Run your diagnostic lab with faster follow-ups and fewer missed patients.',
+    subheadline:
+      'Track patient enquiries, booking intent, report delivery, and post-report follow-ups in one focused workspace built for lab operations.',
+    highlightOneLabel: 'Booking pipeline',
+    highlightOneText: 'See every enquiry in motion',
+    highlightTwoLabel: 'Report follow-through',
+    highlightTwoText: 'Reduce missed post-report calls',
+    calloutTitle: 'Built for diagnostics teams',
+    calloutText:
+      'Give reception, operations, and lab owners a clear view of what needs action across bookings and follow-ups.',
   },
   featureFlags: {
     aiAssist: true,

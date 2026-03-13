@@ -4,7 +4,7 @@ This folder contains local infrastructure for HikmahOne LeadOps.
 
 ## Services
 - PostgreSQL 16 (`localhost:5432`)
-- Redis 7 (`localhost:6379`)
+- Redis 7 (`localhost:6379`) for BullMQ and realtime pub/sub
 
 ## Run
 ```bash

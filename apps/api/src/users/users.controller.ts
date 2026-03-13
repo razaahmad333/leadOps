@@ -4,10 +4,12 @@ import {
   Get,
   Param,
   Patch,
+  ParseUUIDPipe,
   Post,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
+  AuthUser,
   CreateUserDto,
   CreateUserSchema,
   ResetPasswordDto,
@@ -37,15 +39,18 @@ export class UsersController {
   @Post()
   @Permissions('users.manage')
   @ApiOperation({ summary: 'Create a user in the current tenant' })
-  create(@Body(new ZodValidationPipe(CreateUserSchema)) dto: CreateUserDto): Promise<TeamUser> {
-    return this.usersService.create(dto);
+  create(
+    @CurrentUser() actor: AuthUser,
+    @Body(new ZodValidationPipe(CreateUserSchema)) dto: CreateUserDto,
+  ): Promise<TeamUser> {
+    return this.usersService.create(dto, actor.id);
   }
 
   @Patch(':id')
   @Permissions('users.manage')
   @ApiOperation({ summary: 'Update a tenant user' })
   update(
-    @Param('id') id: string,
+    @Param('id', new ParseUUIDPipe()) id: string,
     @Body(new ZodValidationPipe(UpdateUserSchema)) dto: UpdateUserDto,
     @CurrentUser() actor: { id: string },
   ): Promise<TeamUser> {
@@ -56,10 +61,11 @@ export class UsersController {
   @Permissions('users.manage')
   @ApiOperation({ summary: 'Reset a tenant user password' })
   async resetPassword(
-    @Param('id') id: string,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @CurrentUser() actor: AuthUser,
     @Body(new ZodValidationPipe(ResetPasswordSchema)) dto: ResetPasswordDto,
   ): Promise<{ success: boolean }> {
-    await this.usersService.resetPassword(id, dto.password);
+    await this.usersService.resetPassword(id, dto.password, actor.id);
     return { success: true };
   }
 }

@@ -3,6 +3,7 @@ import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { BullModule } from '@nestjs/bullmq';
 import { ConfigModule } from '@nestjs/config';
 import { EventEmitterModule } from '@nestjs/event-emitter';
+import { z } from 'zod';
 import { AccessControlModule } from './access-control/access-control.module';
 import { PermissionsGuard } from './access-control/permissions.guard';
 import { AuthModule } from './auth/auth.module';
@@ -25,12 +26,38 @@ import { SettingsModule } from './settings/settings.module';
 import { TenantMiddleware } from './tenant/tenant.middleware';
 import { TenantModule } from './tenant/tenant.module';
 import { UsersModule } from './users/users.module';
+import { RealtimeModule } from './realtime/realtime.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: '.env',
+      validate: (env) => {
+        const schema = z.object({
+          NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+          PORT: z.coerce.number().int().positive().default(3000),
+          DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
+          REDIS_HOST: z.string().min(1).default('localhost'),
+          REDIS_PORT: z.coerce.number().int().positive().default(6379),
+          JWT_SECRET: z.string().min(32, 'JWT_SECRET must be at least 32 characters'),
+          JWT_EXPIRES_IN: z.string().min(1).default('7d'),
+          DEPLOYMENT_MODE: z.enum(['single', 'multi']).default('single'),
+          SINGLE_TENANT_ID: z.string().optional(),
+          CORS_ORIGIN: z.string().optional(),
+          ENABLE_SWAGGER: z.enum(['true', 'false']).optional(),
+          MESSAGEBIRD_ACCESS_KEY: z.string().optional(),
+          MESSAGEBIRD_VERIFY_ORIGINATOR: z.string().optional(),
+          MESSAGEBIRD_VERIFY_TEMPLATE: z.string().optional(),
+          MESSAGEBIRD_VERIFY_TIMEOUT_SECONDS: z.string().optional(),
+        });
+
+        const parsed = schema.parse(env);
+        return {
+          ...env,
+          ...parsed,
+        };
+      },
     }),
     EventEmitterModule.forRoot(),
     BullModule.forRoot({
@@ -57,6 +84,7 @@ import { UsersModule } from './users/users.module';
     QueueModule,
     EventsModule,
     IntegrationsModule,
+    RealtimeModule,
   ],
   providers: [
     {

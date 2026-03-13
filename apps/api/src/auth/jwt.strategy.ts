@@ -10,7 +10,7 @@ import { getTenantContext } from '../tenant/tenant.store';
 interface JwtPayload {
   sub: string;
   accountId: string;
-  email: string;
+  email?: string;
   role: string;
   tenantId: string;
   kind?: string;

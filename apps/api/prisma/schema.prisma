@@ -38,6 +38,7 @@ model Tenant {
   leads          Lead[]
   followUps      FollowUp[]
   leadActivities LeadActivity[]
+  auditEvents    TenantAuditEvent[]
   webhookEvents  WebhookMessage[]
   roles          PermissionRole[]
   branches       Branch[]
@@ -100,6 +101,7 @@ model User {
   defaultBranch  Branch?            @relation("UserDefaultBranch", fields: [defaultBranchId], references: [id], onDelete: SetNull)
   followUps      FollowUp[]
   activities     LeadActivity[]
+  auditEvents    TenantAuditEvent[]
   ownedLeads     Lead[]             @relation("LeadOwner")
   userRoles      UserRole[]
   branchScopes   UserBranchScope[]
@@ -170,6 +172,8 @@ model Branch {
   id        String   @id @default(uuid())
   tenantId  String   @map("tenant_id")
   name      String
+  description String?
+  isActive  Boolean  @default(true) @map("is_active")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
@@ -262,6 +266,23 @@ model LeadActivity {
 
   @@index([tenantId, leadId, createdAt])
   @@map("lead_activities")
+}
+
+model TenantAuditEvent {
+  id         String   @id @default(uuid())
+  tenantId   String   @map("tenant_id")
+  actorId    String?  @map("actor_id")
+  entityType String   @map("entity_type")
+  entityId   String?  @map("entity_id")
+  action     String
+  metadata   Json?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  actor  User?  @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, createdAt])
+  @@map("tenant_audit_events")
 }
 
 model WebhookMessage {

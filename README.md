@@ -4,10 +4,12 @@ Production-grade LeadOps platform for multi-tenant teams.
 
 ## Stack
 - Monorepo: `pnpm workspaces` + `Turborepo`
-- API: NestJS + Fastify + Swagger/OpenAPI
+- API: NestJS + Fastify + Swagger/OpenAPI + Socket.IO gateway
 - Worker: NestJS queue worker (BullMQ + Redis)
 - Web: React + Vite + Tailwind + shadcn-style components + lucide icons
+- Shared contracts: `@leadops/shared` (Zod schemas + enums + queue/realtime constants)
 - Persistence: Prisma + PostgreSQL
+- Realtime bridge: Redis pub/sub (`leadops:realtime:events`)
 
 ## Repository Structure
 - `apps/api`
@@ -37,12 +39,19 @@ pnpm db:generate
 pnpm db:migrate
 pnpm db:seed
 
-# 5) Choose tenant resolution mode
-# Option A (single tenant / dedicated): set DEPLOYMENT_MODE=single + SINGLE_TENANT_ID=<seeded tenant id> in apps/api/.env
-# Option B (shared multi-tenant SaaS): set DEPLOYMENT_MODE=multi in apps/api/.env
+# 5) Choose tenant resolution mode in apps/api/.env
+# Option A (single tenant): DEPLOYMENT_MODE=single + SINGLE_TENANT_ID=<tenant-id>
+# Option B (shared SaaS): DEPLOYMENT_MODE=multi
 
-# 6) Run everything (api + worker + web)
+# 6) Run all apps
 pnpm dev
+```
+
+Run services separately (optional):
+```bash
+pnpm --filter @leadops/api dev
+pnpm --filter @leadops/worker dev
+pnpm --filter @leadops/web dev
 ```
 
 ## URLs
@@ -51,36 +60,47 @@ pnpm dev
 - Swagger: `http://localhost:3000/docs`
 - Health: `http://localhost:3000/health`
 - Metrics: `http://localhost:3000/metrics`
+- Realtime namespace (Socket.IO): `http://localhost:3000/realtime`
 
 ## Local Credentials
+- SUPER_ADMIN (Demo Lab membership): `admin@local.test` or `+1-555-0001` / `Password123!`
 - Shared OWNER (Demo Lab + Demo Generic): `owner@local.test` or `+1-555-0101` / `Password123!`
 - Shared STAFF (Demo Lab + Demo Generic): `staff@local.test` or `+1-555-0102` / `Password123!`
-- SUPER_ADMIN (Demo Lab membership): `admin@local.test` or `+1-555-0001` / `Password123!`
 
-## Platform Admin
-- Sign in as `admin@local.test` and open `/platform/admin`
-- Use it to create tenants, seed the first tenant admin, and grant additional tenant access to existing or new accounts
+Note for shared OWNER/STAFF: login returns tenant selection (`tenant_selection_required`) because those accounts have multiple memberships.
+
+## Platform Admin (`/platform/admin`)
+Sign in as `admin@local.test` (superadmin) to:
+- view paginated tenant table with search/sort
+- open tenant detail drawer with tabs: Tenant, Users, Branches, Settings, Roles, Audit
+- create tenants and create additional tenant memberships
+- manage tenant settings (timezone, business window, reminder rules)
+- create/edit/activate/deactivate tenant branches
+- create/edit tenant roles (system roles are read-only)
+- update user details, role assignments, branch scope/default branch, and reset passwords
 
 ## Scripts
 - `pnpm dev`: run API + worker + web
 - `pnpm build`: build all packages via Turbo
 - `pnpm lint`: lint all packages
 - `pnpm typecheck`: typecheck all packages
-- `pnpm db:generate`: prisma generate (API)
-- `pnpm db:migrate`: prisma migrate dev (API)
+- `pnpm test`: run package tests
+- `pnpm db:generate`: Prisma generate (API)
+- `pnpm db:migrate`: Prisma migrate dev (API)
 - `pnpm db:seed`: seed local data (API)
+- `pnpm db:studio`: Prisma Studio (API)
 
 ## Verification Checklist
-1. Login as Demo Lab staff: labels show Enquiries/Bookings/Reports and lab workflow vocabulary.
-2. Demo Lab intake form shows lab fields: `testOrPackage`, `homeCollection`, `preferredSlot`, `pincode`, `source`.
-3. Dashboard cards switch for Demo Lab (`Enquiries Today`, `Bookings Today`, `Post-Report Follow-ups Due`, etc.).
-4. Login as Demo Generic: UI remains generic LeadOps labels and generic intake fields.
-5. Create lead/enquiry works and enforces `nextFollowUpAt`.
-6. Tenant context works via `GET /v1/tenant/me` in both `DEPLOYMENT_MODE=multi` (token or tenant slug driven) and `DEPLOYMENT_MODE=single`.
-7. Change stage to `REPORT_DELIVERED`: post-report follow-up task is created/scheduled from tenant config rules.
-8. Worker starts and processes reminder jobs.
+1. Log in with `owner@local.test`; verify tenant selection appears (Demo Lab / Demo Generic).
+2. Open Leads: search, stage filter, branch filter (if multi-branch), and pagination work server-side.
+3. Create a lead with `nextFollowUpAt`; verify a pending `GENERAL` follow-up and reminder job are created.
+4. Update lead status with `nextFollowUpAt`; verify lead + follow-up schedule stay in sync.
+5. Mark a follow-up done from Today; verify reminder job cancellation and continuity behavior for active leads.
+6. Enable Today `Include overdue`; verify overdue items are listed with current filters/pagination.
+7. Change stage to report-delivered milestone; verify post-report follow-up is scheduled from tenant rules.
+8. Open two browser sessions; verify realtime invalidation refreshes Leads/Today after write actions.
 
 ## Notes
-- WhatsApp integration is scaffolded only (non-goal for v1).
-- Settings page is read-only placeholder backed by tenant config (`/v1/tenant/me` + `/v1/settings`).
-- Ingestion examples (`curl` + scripts) are documented in `docs/INGESTIONS.md`.
+- WhatsApp inbound/outbound adapters remain scaffolded in v1; public webhook is not exposed yet.
+- Tenant reminder/business-window settings are editable via `PATCH /v1/settings` for tenant admin or superadmin with `settings.manage`.
+- Ingestion examples (`curl` + script patterns) are in `docs/INGESTIONS.md`.

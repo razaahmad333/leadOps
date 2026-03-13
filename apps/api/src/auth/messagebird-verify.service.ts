@@ -16,17 +16,22 @@ interface LocalVerification {
   code: string;
   phone: string;
   expiresAt: number;
+  attempts: number;
 }
 
 @Injectable()
 export class MessageBirdVerifyService {
   private readonly localVerifications = new Map<string, LocalVerification>();
+  private readonly maxLocalVerifications = 20_000;
 
   constructor(private readonly config: ConfigService) {}
 
   async requestOtp(phone: string): Promise<VerifyRequestResult> {
     const accessKey = this.config.get<string>('MESSAGEBIRD_ACCESS_KEY');
     if (!accessKey) {
+      if (this.isProduction()) {
+        throw new ServiceUnavailableException('OTP provider is unavailable');
+      }
       return this.createLocalVerification(phone);
     }
 
@@ -80,6 +85,8 @@ export class MessageBirdVerifyService {
   }
 
   private createLocalVerification(phone: string): VerifyRequestResult {
+    this.evictExpiredLocalVerifications();
+
     const verificationId = randomUUID();
     const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
 
@@ -87,11 +94,12 @@ export class MessageBirdVerifyService {
       code,
       phone,
       expiresAt: Date.now() + this.getTimeoutSeconds() * 1000,
+      attempts: 0,
     });
 
     return {
       verificationId,
-      devOtpCode: code,
+      ...(this.isProduction() ? {} : { devOtpCode: code }),
     };
   }
 
@@ -104,6 +112,12 @@ export class MessageBirdVerifyService {
     if (local.expiresAt < Date.now()) {
       this.localVerifications.delete(verificationId);
       throw new UnauthorizedException('OTP session expired');
+    }
+
+    local.attempts += 1;
+    if (local.attempts > 5) {
+      this.localVerifications.delete(verificationId);
+      throw new UnauthorizedException('OTP session locked due to too many attempts');
     }
 
     if (local.phone !== phone || local.code !== otpCode.trim()) {
@@ -149,5 +163,31 @@ export class MessageBirdVerifyService {
     );
 
     return detail?.description ?? null;
+  }
+
+  private isProduction(): boolean {
+    return this.config.get<string>('NODE_ENV') === 'production';
+  }
+
+  private evictExpiredLocalVerifications(): void {
+    const now = Date.now();
+    for (const [key, value] of this.localVerifications.entries()) {
+      if (value.expiresAt <= now) {
+        this.localVerifications.delete(key);
+      }
+    }
+
+    if (this.localVerifications.size <= this.maxLocalVerifications) {
+      return;
+    }
+
+    const sorted = [...this.localVerifications.entries()].sort((a, b) => a[1].expiresAt - b[1].expiresAt);
+    const toDrop = this.localVerifications.size - this.maxLocalVerifications;
+    for (let index = 0; index < toDrop; index += 1) {
+      const key = sorted[index]?.[0];
+      if (key) {
+        this.localVerifications.delete(key);
+      }
+    }
   }
 }

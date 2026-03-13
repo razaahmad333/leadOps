@@ -3,6 +3,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { AuthController } from './auth.controller';
+import { AuthRateLimitGuard } from './auth-rate-limit.guard';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './jwt.strategy';
 import { MessageBirdVerifyService } from './messagebird-verify.service';
@@ -22,7 +23,7 @@ import { MessageBirdVerifyService } from './messagebird-verify.service';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, MessageBirdVerifyService],
+  providers: [AuthService, JwtStrategy, MessageBirdVerifyService, AuthRateLimitGuard],
   exports: [AuthService],
 })
 export class AuthModule {}

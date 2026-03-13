@@ -8,6 +8,7 @@ import {
   UserStatus,
 } from '@leadops/shared';
 import { PrismaService } from '../prisma/prisma.service';
+import { buildBranchScopeSummary } from '../common/utils/user-access.util';
 import { TenantConfigService } from '../tenant/tenant-config.service';
 import { getTenantContext } from '../tenant/tenant.store';
 import {
@@ -94,12 +95,15 @@ export class AccessControlService {
     await this.ensureTenantBranches(tenantId, profile.industryPreset);
   }
 
-  async listTenantBranches(tenantId: string) {
+  async listTenantBranches(tenantId: string, options?: { includeInactive?: boolean }) {
     await this.ensureTenantInitialized(tenantId);
 
     return this.prisma.branch.findMany({
-      where: { tenantId },
-      orderBy: { name: 'asc' },
+      where: {
+        tenantId,
+        ...(options?.includeInactive ? {} : { isActive: true }),
+      },
+      orderBy: [{ isActive: 'desc' }, { name: 'asc' }],
     });
   }
 
@@ -184,6 +188,7 @@ export class AccessControlService {
             where: {
               tenantId,
               id: { in: branchIds },
+              isActive: true,
             },
           });
 
@@ -274,7 +279,7 @@ export class AccessControlService {
 
     const [allBranches, user] = await Promise.all([
       this.prisma.branch.findMany({
-        where: { tenantId },
+        where: { tenantId, isActive: true },
         orderBy: { name: 'asc' },
       }),
       this.prisma.user.findFirst({
@@ -330,18 +335,11 @@ export class AccessControlService {
       }
     }
 
-    const branchScope =
-      user.isSuperAdmin || user.isTenantAdmin || user.branchScopes.length === 0
-        ? {
-            scopeType: BranchScopeType.ALL_BRANCHES,
-            branchIds: allBranches.map((branch) => branch.id),
-            branchNames: allBranches.map((branch) => branch.name),
-          }
-        : {
-            scopeType: BranchScopeType.SELECTED,
-            branchIds: user.branchScopes.map((scope) => scope.branchId),
-            branchNames: user.branchScopes.map((scope) => scope.branch.name),
-          };
+    const branchScope = buildBranchScopeSummary({
+      forceAllBranches: user.isSuperAdmin || user.isTenantAdmin,
+      assignedBranches: user.branchScopes,
+      allBranches,
+    });
 
     return {
       id: user.id,
@@ -350,6 +348,7 @@ export class AccessControlService {
       name: user.name,
       role: user.role as Role,
       tenantId: user.tenantId,
+      defaultBranchId: user.defaultBranchId,
       isSuperAdmin: user.isSuperAdmin,
       isTenantAdmin: user.isTenantAdmin,
       status: user.status as UserStatus,

@@ -4,10 +4,19 @@ import {
   Get,
   Param,
   Patch,
+  ParseUUIDPipe,
   Post,
+  Query,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { AuthUser, CreateFollowUpDto, CreateFollowUpSchema, TodayFollowUp } from '@leadops/shared';
+import {
+  AuthUser,
+  CreateFollowUpDto,
+  CreateFollowUpSchema,
+  ListTodayFollowUpsQueryDto,
+  ListTodayFollowUpsQuerySchema,
+  TodayFollowUpListResponse,
+} from '@leadops/shared';
 import { Permissions } from '../access-control/permissions.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
@@ -22,8 +31,11 @@ export class FollowUpsController {
   @Get('today')
   @Permissions('followups.view')
   @ApiOperation({ summary: "Get today's pending follow-ups" })
-  findToday(@CurrentUser() user: AuthUser): Promise<TodayFollowUp[]> {
-    return this.followUpsService.findToday(user);
+  findToday(
+    @CurrentUser() user: AuthUser,
+    @Query(new ZodValidationPipe(ListTodayFollowUpsQuerySchema)) query: ListTodayFollowUpsQueryDto,
+  ): Promise<TodayFollowUpListResponse> {
+    return this.followUpsService.findToday(user, query);
   }
 
   @Post()
@@ -40,7 +52,7 @@ export class FollowUpsController {
   @Permissions('followups.complete')
   @ApiOperation({ summary: 'Mark follow-up as done' })
   markDone(
-    @Param('id') id: string,
+    @Param('id', new ParseUUIDPipe()) id: string,
     @CurrentUser() user: AuthUser,
   ) {
     return this.followUpsService.markDone(id, user);

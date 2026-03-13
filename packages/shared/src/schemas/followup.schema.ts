@@ -11,11 +11,11 @@ const DateFromInput = z.preprocess((value) => {
 }, z.date({ invalid_type_error: 'Invalid date', required_error: 'scheduledAt is required' }));
 
 export const CreateFollowUpSchema = z.object({
-  leadId: z.string().min(1, 'leadId is required'),
+  leadId: z.string().uuid('leadId must be a valid UUID'),
   scheduledAt: DateFromInput,
-  assignedTo: z.string().optional(),
-  note: z.string().max(1000).optional(),
-});
+  assignedTo: z.string().uuid().optional(),
+  note: z.string().trim().max(1000).optional(),
+}).strict();
 
 export type CreateFollowUpDto = z.infer<typeof CreateFollowUpSchema>;
 
@@ -38,6 +38,7 @@ export const TodayFollowUpSchema = FollowUpSchema.extend({
     name: z.string(),
     phone: z.string().nullable(),
     status: z.string(),
+    branchId: z.string().nullable().optional(),
   }),
   assignedUser: z
     .object({
@@ -48,5 +49,61 @@ export const TodayFollowUpSchema = FollowUpSchema.extend({
     .optional(),
 });
 
+const OptionalTrimmedString = z.preprocess((value) => {
+  if (typeof value !== 'string') {
+    return value;
+  }
+
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : undefined;
+}, z.string().optional());
+
+const BooleanFromQuery = z.preprocess((value) => {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'true' || normalized === '1' || normalized === 'yes' || normalized === 'on') {
+      return true;
+    }
+    if (normalized === 'false' || normalized === '0' || normalized === 'no' || normalized === 'off' || normalized === '') {
+      return false;
+    }
+  }
+
+  if (typeof value === 'number') {
+    return value === 1;
+  }
+
+  return value;
+}, z.boolean());
+
+export const ListTodayFollowUpsQuerySchema = z.object({
+  search: OptionalTrimmedString,
+  branchId: z.preprocess((value) => {
+    if (typeof value !== 'string') {
+      return value;
+    }
+
+    const normalized = value.trim();
+    return normalized.length > 0 ? normalized : undefined;
+  }, z.string().uuid().optional()),
+  includeOverdue: BooleanFromQuery.default(false),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(20),
+}).strict();
+
+export const TodayFollowUpListResponseSchema = z.object({
+  items: z.array(TodayFollowUpSchema),
+  page: z.number().int().min(1),
+  pageSize: z.number().int().min(1),
+  total: z.number().int().min(0),
+  totalPages: z.number().int().min(1),
+});
+
 export type FollowUp = z.infer<typeof FollowUpSchema>;
 export type TodayFollowUp = z.infer<typeof TodayFollowUpSchema>;
+export type ListTodayFollowUpsQueryDto = z.infer<typeof ListTodayFollowUpsQuerySchema>;
+export type TodayFollowUpListResponse = z.infer<typeof TodayFollowUpListResponseSchema>;

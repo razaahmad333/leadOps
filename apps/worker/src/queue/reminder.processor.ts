@@ -1,8 +1,9 @@
 import { Logger } from '@nestjs/common';
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import type { Job } from 'bullmq';
-import { REMINDER_QUEUE } from '@leadops/shared';
+import { REALTIME_INVALIDATION_EVENTS, REMINDER_QUEUE } from '@leadops/shared';
 import { PrismaService } from '../prisma/prisma.service';
+import { WorkerRealtimePublisherService } from './realtime-publisher.service';
 
 interface ReminderJobData {
   tenantId: string;
@@ -13,7 +14,10 @@ interface ReminderJobData {
 export class ReminderProcessor extends WorkerHost {
   private readonly logger = new Logger(ReminderProcessor.name);
 
-  constructor(private readonly prisma: PrismaService) {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly realtimePublisher: WorkerRealtimePublisherService,
+  ) {
     super();
   }
 
@@ -42,6 +46,25 @@ export class ReminderProcessor extends WorkerHost {
       }),
     );
 
+    await this.realtimePublisher.publish({
+      event: REALTIME_INVALIDATION_EVENTS.TODAY_INVALIDATE,
+      tenantId: job.data.tenantId,
+      branchId: followUp.lead.branchId ?? undefined,
+      leadId: followUp.leadId,
+      reason: 'followup.due',
+      occurredAt: new Date().toISOString(),
+      source: 'worker',
+    });
+    await this.realtimePublisher.publish({
+      event: REALTIME_INVALIDATION_EVENTS.LEAD_DETAIL_INVALIDATE,
+      tenantId: job.data.tenantId,
+      branchId: followUp.lead.branchId ?? undefined,
+      leadId: followUp.leadId,
+      reason: 'followup.due',
+      occurredAt: new Date().toISOString(),
+      source: 'worker',
+    });
+
     if (followUp.scheduledAt < new Date() && !followUp.escalatedAt) {
       await this.prisma.followUp.update({
         where: { id: followUp.id },
@@ -56,6 +79,25 @@ export class ReminderProcessor extends WorkerHost {
           message: 'Owner notification placeholder executed',
         }),
       );
+
+      await this.realtimePublisher.publish({
+        event: REALTIME_INVALIDATION_EVENTS.TODAY_INVALIDATE,
+        tenantId: job.data.tenantId,
+        branchId: followUp.lead.branchId ?? undefined,
+        leadId: followUp.leadId,
+        reason: 'followup.escalated',
+        occurredAt: new Date().toISOString(),
+        source: 'worker',
+      });
+      await this.realtimePublisher.publish({
+        event: REALTIME_INVALIDATION_EVENTS.LEAD_DETAIL_INVALIDATE,
+        tenantId: job.data.tenantId,
+        branchId: followUp.lead.branchId ?? undefined,
+        leadId: followUp.leadId,
+        reason: 'followup.escalated',
+        occurredAt: new Date().toISOString(),
+        source: 'worker',
+      });
     }
   }
 }

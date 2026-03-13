@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
@@ -27,9 +28,22 @@ export class WebhookIdempotencyService {
         },
       });
       return true;
-    } catch {
-      return false;
+    } catch (error: unknown) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        return false;
+      }
+
+      throw error;
     }
+  }
+
+  async markFailed(provider: string, messageId: string): Promise<void> {
+    await this.prisma.webhookMessage.update({
+      where: { provider_messageId: { provider, messageId } },
+      data: { status: 'FAILED' },
+    }).catch(() => {
+      // If failure-state update cannot be persisted, we still surface original intake error.
+    });
   }
 
   async markProcessed(provider: string, messageId: string): Promise<void> {

@@ -4,14 +4,20 @@ import {
   AuthUser,
   CreateFollowUpDto,
   DOMAIN_EVENTS,
+  ListTodayFollowUpsQueryDto,
+  REALTIME_INVALIDATION_EVENTS,
   TodayFollowUp,
+  TodayFollowUpListResponse,
 } from '@leadops/shared';
+import { Prisma } from '@prisma/client';
 import { BranchScopeService } from '../access-control/branch-scope.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { getTenantContext } from '../tenant/tenant.store';
 import { TenantConfigService } from '../tenant/tenant-config.service';
 import { QueueService } from '../queue/queue.service';
 import { DomainEventsService } from '../events/domain-events.service';
+import { RealtimePublisherService } from '../realtime/realtime.publisher.service';
+import { buildEmptyPaginatedResponse, buildPaginatedResponse } from '../common/utils/pagination.util';
 
 @Injectable()
 export class FollowUpsService {
@@ -21,10 +27,24 @@ export class FollowUpsService {
     private readonly queue: QueueService,
     private readonly domainEvents: DomainEventsService,
     private readonly branchScope: BranchScopeService,
+    private readonly realtimePublisher: RealtimePublisherService,
   ) {}
 
-  async findToday(user: AuthUser): Promise<TodayFollowUp[]> {
+  async findToday(user: AuthUser, query: ListTodayFollowUpsQueryDto): Promise<TodayFollowUpListResponse> {
     const tenant = getTenantContext();
+    const selectedBranchId = tenant?.selectedBranchId;
+    const page = query.page;
+    const pageSize = query.pageSize;
+    const search = query.search?.trim();
+    const includeOverdue = query.includeOverdue;
+
+    if (query.branchId) {
+      this.branchScope.ensureBranchAccess(user, query.branchId);
+    }
+
+    if (selectedBranchId && query.branchId && query.branchId !== selectedBranchId) {
+      return buildEmptyPaginatedResponse<TodayFollowUp>(page, pageSize);
+    }
 
     const start = new Date();
     start.setHours(0, 0, 0, 0);
@@ -32,45 +52,83 @@ export class FollowUpsService {
     const end = new Date();
     end.setHours(23, 59, 59, 999);
 
-    const followUps = await this.prisma.followUp.findMany({
-      where: {
-        tenantId: tenant?.tenantId,
-        done: false,
-        scheduledAt: { gte: start, lte: end },
-      },
-      include: {
-        lead: {
-          select: {
-            id: true,
-            name: true,
-            phone: true,
-            status: true,
-            branchId: true,
-          },
-        },
-        user: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
-      },
-      orderBy: { scheduledAt: 'asc' },
-    });
+    const branchIds = this.branchScope.branchIdsFor(user);
+    const leadWhere: Prisma.LeadWhereInput = {};
 
-    return followUps
-      .filter((item) => {
-        try {
-          this.branchScope.ensureLeadAccess(user, item.lead);
-          return true;
-        } catch {
-          return false;
-        }
-      })
-      .map((item) => ({
+    if (selectedBranchId) {
+      this.branchScope.ensureBranchAccess(user, selectedBranchId);
+      leadWhere.branchId = selectedBranchId;
+    } else if (query.branchId) {
+      leadWhere.branchId = query.branchId;
+    } else if (branchIds) {
+      leadWhere.branchId = {
+        in: branchIds,
+      };
+    }
+
+    if (search) {
+      leadWhere.OR = [
+        {
+          name: {
+            contains: search,
+            mode: 'insensitive',
+          },
+        },
+        {
+          phone: {
+            contains: search,
+            mode: 'insensitive',
+          },
+        },
+      ];
+    }
+
+    const where: Prisma.FollowUpWhereInput = {
+      tenantId: tenant?.tenantId,
+      done: false,
+      scheduledAt: includeOverdue ? { lte: end } : { gte: start, lte: end },
+    };
+
+    if (Object.keys(leadWhere).length > 0) {
+      where.lead = { is: leadWhere };
+    }
+
+    const [followUps, total] = await this.prisma.$transaction([
+      this.prisma.followUp.findMany({
+        where,
+        include: {
+          lead: {
+            select: {
+              id: true,
+              name: true,
+              phone: true,
+              status: true,
+              branchId: true,
+            },
+          },
+          user: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+        orderBy: { scheduledAt: 'asc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      this.prisma.followUp.count({ where }),
+    ]);
+
+    return buildPaginatedResponse(
+      followUps.map((item) => ({
         ...item,
         assignedUser: item.user,
-      })) as TodayFollowUp[];
+      })) as TodayFollowUp[],
+      page,
+      pageSize,
+      total,
+    );
   }
 
   async create(dto: CreateFollowUpDto, actor: AuthUser): Promise<{ id: string }> {
@@ -118,6 +176,13 @@ export class FollowUpsService {
       scheduledAt,
     );
 
+    this.publishFollowupRealtimeInvalidations({
+      tenantId: lead.tenantId,
+      branchId: lead.branchId,
+      leadId: lead.id,
+      reason: 'followup.created',
+    });
+
     return { id: followUp.id };
   }
 
@@ -142,6 +207,8 @@ export class FollowUpsService {
         doneAt: new Date(),
       },
     });
+
+    await this.queue.cancelFollowupReminder(followUp.id);
 
     await this.prisma.leadActivity.create({
       data: {
@@ -202,6 +269,47 @@ export class FollowUpsService {
       followUpId: followUp.id,
     });
 
+    this.publishFollowupRealtimeInvalidations({
+      tenantId: followUp.tenantId,
+      branchId: followUp.lead.branchId,
+      leadId: followUp.leadId,
+      reason: 'followup.completed',
+    });
+
     return { success: true };
+  }
+
+  private publishFollowupRealtimeInvalidations(input: {
+    tenantId: string;
+    branchId: string | null | undefined;
+    leadId: string;
+    reason: string;
+  }): void {
+    this.realtimePublisher.publishInvalidation({
+      event: REALTIME_INVALIDATION_EVENTS.TODAY_INVALIDATE,
+      tenantId: input.tenantId,
+      branchId: input.branchId ?? undefined,
+      leadId: input.leadId,
+      reason: input.reason,
+      source: 'api',
+    });
+
+    this.realtimePublisher.publishInvalidation({
+      event: REALTIME_INVALIDATION_EVENTS.LEADS_INVALIDATE,
+      tenantId: input.tenantId,
+      branchId: input.branchId ?? undefined,
+      leadId: input.leadId,
+      reason: input.reason,
+      source: 'api',
+    });
+
+    this.realtimePublisher.publishInvalidation({
+      event: REALTIME_INVALIDATION_EVENTS.LEAD_DETAIL_INVALIDATE,
+      tenantId: input.tenantId,
+      branchId: input.branchId ?? undefined,
+      leadId: input.leadId,
+      reason: input.reason,
+      source: 'api',
+    });
   }
 }

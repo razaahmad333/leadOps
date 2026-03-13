@@ -1,10 +1,8 @@
 # LeadOps Ingestion Guide
 
-This guide shows how to push inbound data into HikmahOne LeadOps using `curl` or scripts.
+This guide shows how to push inbound data into HikmahOne LeadOps with `curl` or scripts.
 
 ## Base URL
-
-For local development:
 
 ```bash
 API_BASE="http://localhost:3000/v1"
@@ -12,16 +10,16 @@ API_BASE="http://localhost:3000/v1"
 
 ## Tenant Resolution (Important)
 
-All ingestion requests run in a tenant context.
+Ingestion requests must resolve tenant context.
 
-- `DEPLOYMENT_MODE=single`: no tenant header required; API uses `SINGLE_TENANT_ID`.
-- `DEPLOYMENT_MODE=multi`: send `x-tenant-id` (tenant UUID or slug) unless you use subdomain routing.
+- `DEPLOYMENT_MODE=single`: tenant context is fixed by API config (`SINGLE_TENANT_ID` or first tenant fallback).
+- `DEPLOYMENT_MODE=multi`: resolve via subdomain, `x-tenant-id`, or tenant-scoped bearer token.
 
-Example (multi-tenant mode):
+Example tenant signal for local multi-tenant mode:
 
 ```bash
 TENANT_ID="demo-lab"
-# or TENANT_ID="0e51afec-c11d-4858-aee3-d7fc1930fcb6"
+# or tenant UUID
 ```
 
 ## Channel Support Matrix
@@ -29,7 +27,7 @@ TENANT_ID="demo-lab"
 | Channel | Status | Endpoint | Auth |
 |---|---|---|---|
 | Website Form | Implemented | `POST /v1/intake/website` | Public |
-| WhatsApp Inbound | Scaffolded (no public webhook endpoint yet) | Use `POST /v1/leads` for now | Bearer token |
+| WhatsApp Inbound | Scaffolded (no public webhook endpoint yet) | Use `POST /v1/leads` | Bearer token |
 | Calls/Call Center | Implemented via generic lead API | `POST /v1/leads` | Bearer token |
 | Walk-in/Manual Imports | Implemented via generic lead API | `POST /v1/leads` | Bearer token |
 
@@ -41,7 +39,7 @@ Endpoint:
 POST /v1/intake/website
 ```
 
-Payload:
+Payload example:
 
 ```json
 {
@@ -86,34 +84,57 @@ curl -X POST "$API_BASE/intake/website" \
 ```
 
 Expected response:
-
-- First time: `{ "created": true, "leadId": "<uuid>" }`
-- Duplicate `providerMessageId`: `{ "created": false }` (idempotent skip)
+- First delivery: `{ "created": true, "leadId": "<uuid>" }`
+- Duplicate `providerMessageId`: `{ "created": false }`
 
 Notes:
+- Public intake endpoint is rate-limited (`20 req/min/IP`).
+- `providerMessageId` is optional but strongly recommended for idempotency.
 
-- Rate limit applies on this public endpoint: `20 requests / minute / IP`.
-- `providerMessageId` is optional but recommended for idempotency.
+## 2) Authenticated Ingestion (`POST /v1/leads`)
 
-## 2) Authenticated Ingestion (WhatsApp / Calls / Scripts)
+Use generic lead creation for channels without public webhook endpoints.
 
-Use `POST /v1/leads` as the generic ingestion route for channels that are not yet exposed as public webhooks.
+### Step A: Login
 
-### Step A: Login and get token
+Global login endpoint does not require tenant context.
 
 ```bash
-TOKEN=$(curl -s -X POST "$API_BASE/auth/login" \
+LOGIN_RESPONSE=$(curl -s -X POST "$API_BASE/auth/login" \
   -H "Content-Type: application/json" \
-  -H "x-tenant-id: $TENANT_ID" \
   -d '{
-    "email": "owner+lab@local.test",
+    "identifier": "admin@local.test",
     "password": "Password123!"
-  }' | sed -n 's/.*"accessToken":"\([^"]*\)".*/\1/p')
+  }')
 ```
 
-In single-tenant mode, remove `-H "x-tenant-id: $TENANT_ID"`.
+Use an account that has membership in the tenant you plan to ingest into.
 
-### Step B: Create lead/enquiry from channel payload
+If the account has one active membership (for example `admin@local.test` in local seed), response is:
+- `{ "kind": "authenticated", "accessToken": "...", ... }`
+
+If the account has multiple memberships (for example `owner@local.test`), response is:
+- `{ "kind": "tenant_selection_required", "selectionToken": "...", "tenants": [...] }`
+
+In that case, call tenant selection:
+
+```bash
+SELECT_RESPONSE=$(curl -s -X POST "$API_BASE/auth/select-tenant" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"selectionToken\": \"<selectionToken>\",
+    \"tenantId\": \"$TENANT_ID\"
+  }")
+```
+
+### Step B: Extract access token
+
+```bash
+TOKEN=$(echo "$LOGIN_RESPONSE" | sed -n 's/.*"accessToken":"\([^"]*\)".*/\1/p')
+# If tenant selection was required, extract from SELECT_RESPONSE instead.
+```
+
+### Step C: Create lead from channel payload
 
 Endpoint:
 
@@ -122,11 +143,10 @@ POST /v1/leads
 ```
 
 Minimum required:
-
 - `name`
 - `nextFollowUpAt` (ISO datetime)
 
-#### Example: WhatsApp ingestion via generic lead API
+WhatsApp-style payload:
 
 ```bash
 curl -X POST "$API_BASE/leads" \
@@ -139,11 +159,10 @@ curl -X POST "$API_BASE/leads" \
     "source": "whatsapp",
     "stageKey": "ENQUIRY_RECEIVED",
     "note": "User asked for full body checkup package",
-    "nextFollowUpAt": "2026-02-27T05:30:00.000Z",
+    "nextFollowUpAt": "2026-03-13T11:30:00.000Z",
     "intakeData": {
       "providerMessageId": "wa-msg-10001",
       "channel": "whatsapp",
-      "source": "whatsapp",
       "testOrPackage": "Diabetes Package",
       "homeCollection": true,
       "pincode": "560001"
@@ -151,7 +170,7 @@ curl -X POST "$API_BASE/leads" \
   }'
 ```
 
-#### Example: Call center ingestion
+Call-center payload:
 
 ```bash
 curl -X POST "$API_BASE/leads" \
@@ -164,13 +183,13 @@ curl -X POST "$API_BASE/leads" \
     "source": "call",
     "stageKey": "ENQUIRY_RECEIVED",
     "note": "Incoming call: requested fasting sugar and lipid profile",
-    "nextFollowUpAt": "2026-02-27T06:00:00.000Z",
+    "nextFollowUpAt": "2026-03-13T12:00:00.000Z",
     "intakeData": {
       "agentId": "agent-07",
       "callId": "twilio-CA12345",
       "testOrPackage": "LFT",
       "homeCollection": false,
-      "preferredSlot": "2026-02-27T08:30:00.000Z",
+      "preferredSlot": "2026-03-13T14:30:00.000Z",
       "pincode": "560048",
       "source": "call"
     }
@@ -184,21 +203,33 @@ Create `scripts/push-intake.mjs`:
 ```js
 const API_BASE = process.env.API_BASE ?? 'http://localhost:3000/v1';
 const TENANT_ID = process.env.TENANT_ID ?? 'demo-lab';
-const EMAIL = process.env.EMAIL ?? 'owner+lab@local.test';
+const IDENTIFIER = process.env.IDENTIFIER ?? 'admin@local.test';
 const PASSWORD = process.env.PASSWORD ?? 'Password123!';
 
-async function login() {
-  const res = await fetch(`${API_BASE}/auth/login`, {
+async function post(path, body) {
+  const res = await fetch(`${API_BASE}${path}`, {
     method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-tenant-id': TENANT_ID,
-    },
-    body: JSON.stringify({ email: EMAIL, password: PASSWORD }),
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(`login failed: ${res.status}`);
-  const json = await res.json();
-  return json.accessToken;
+  const text = await res.text();
+  if (!res.ok) throw new Error(`${path} failed ${res.status}: ${text}`);
+  return JSON.parse(text);
+}
+
+async function login() {
+  const login = await post('/auth/login', { identifier: IDENTIFIER, password: PASSWORD });
+  if (login.kind === 'authenticated') {
+    return login.accessToken;
+  }
+  if (login.kind === 'tenant_selection_required') {
+    const selected = await post('/auth/select-tenant', {
+      selectionToken: login.selectionToken,
+      tenantId: TENANT_ID,
+    });
+    return selected.accessToken;
+  }
+  throw new Error(`Unexpected auth response kind: ${login.kind}`);
 }
 
 async function pushLead(token, payload) {
@@ -250,13 +281,14 @@ node scripts/push-intake.mjs
 
 ## Error Handling Checklist
 
-- `400 Validation failed`: payload shape/date invalid.
-- `401 Invalid email or password`: wrong creds for resolved tenant.
-- `404 Tenant not found`: missing/wrong `x-tenant-id` in multi mode.
-- `429 Rate limit exceeded`: too many public website intake requests.
+- `400 Validation failed`: payload shape or datetime invalid.
+- `401 Invalid email, mobile number, or password`: bad login credentials.
+- `401 Tenant access not found for this account`: wrong tenant selected for account.
+- `404 Tenant not found`: invalid tenant signal in multi-tenant mode.
+- `429 Rate limit exceeded`: public website intake throttled.
 
 ## Current Limitations
 
 - No public WhatsApp webhook endpoint yet (adapter scaffolding exists only).
-- No dedicated Calls endpoint yet; use generic `/v1/leads` ingestion.
+- No dedicated Calls endpoint yet; use generic `/v1/leads`.
 - Outbound WhatsApp adapter is scaffold-only in v1.

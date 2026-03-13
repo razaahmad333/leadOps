@@ -1,5 +1,7 @@
-import { Controller, Get } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Controller, ForbiddenException, Get } from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { AuthUser } from '@leadops/shared';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Public } from '../common/decorators/public.decorator';
 import { MetricsService } from '../common/metrics/metrics.service';
 
@@ -19,10 +21,14 @@ export class HealthController {
     };
   }
 
-  @Public()
   @Get('metrics')
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Minimal metrics snapshot hook' })
-  getMetrics() {
+  getMetrics(@CurrentUser() user: AuthUser) {
+    if (!user.isSuperAdmin) {
+      throw new ForbiddenException('Metrics are only available to superadmin users');
+    }
+
     return this.metrics.snapshot();
   }
 }

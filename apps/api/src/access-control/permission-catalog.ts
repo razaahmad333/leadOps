@@ -23,6 +23,7 @@ export const PERMISSION_CATALOG: PermissionSeed[] = [
   { key: 'followups.create', description: 'Create follow-up tasks.', group: 'Follow-ups' },
   { key: 'followups.complete', description: 'Mark follow-up tasks as complete.', group: 'Follow-ups' },
   { key: 'settings.view', description: 'View tenant settings and workflow configuration.', group: 'Settings' },
+  { key: 'settings.manage', description: 'Manage tenant reminder and business-hour settings.', group: 'Settings' },
   { key: 'pipeline.manage', description: 'Manage workflow stages and pipeline rules.', group: 'Settings' },
   { key: 'templates.manage', description: 'Manage outreach and reminder templates.', group: 'Settings' },
   { key: 'users.view', description: 'View tenant users and access summaries.', group: 'Team' },
@@ -31,6 +32,7 @@ export const PERMISSION_CATALOG: PermissionSeed[] = [
   { key: 'roles.manage', description: 'Create and edit tenant role bundles.', group: 'Team' },
   { key: 'permissions.view', description: 'View the permission catalog.', group: 'Team' },
   { key: 'branches.view', description: 'View tenant branches and branch scope.', group: 'Team' },
+  { key: 'branches.manage', description: 'Create and manage tenant branches.', group: 'Team' },
 ];
 
 const ALL_PERMISSION_KEYS = PERMISSION_CATALOG.map((permission) => permission.key);

@@ -11,11 +11,13 @@ import { api } from '../lib/api';
 interface SessionState {
   user: AuthUser;
   tenantName: string;
+  selectedBranchId?: string | null;
 }
 
 interface AuthContextValue {
   user: AuthUser | null;
   tenantName: string;
+  selectedBranchId: string | null;
   isAuthenticated: boolean;
   pendingTenantSelection: TenantSelectionChallenge | null;
   can: (permission: string) => boolean;
@@ -26,6 +28,7 @@ interface AuthContextValue {
   clearPendingTenantSelection: () => void;
   selectTenant: (selectionToken: string, tenantId: string) => Promise<LoginResponse>;
   switchTenant: (tenantId: string) => Promise<LoginResponse>;
+  setSelectedBranchId: (branchId: string | null) => void;
   refreshUser: () => Promise<void>;
   logout: () => void;
 }
@@ -43,6 +46,37 @@ function readSession(): SessionState | null {
   } catch {
     return null;
   }
+}
+
+function normalizeBranchChoice(value: string | null | undefined): string | null {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+}
+
+function resolveSelectedBranchId(
+  user: AuthUser,
+  preferred: string | null | undefined,
+): string | null {
+  const branchIds = user.branchScope.branchIds ?? [];
+
+  if (branchIds.length === 0) {
+    return null;
+  }
+
+  const normalizedPreferred = normalizeBranchChoice(preferred);
+  if (normalizedPreferred && branchIds.includes(normalizedPreferred)) {
+    return normalizedPreferred;
+  }
+
+  const normalizedDefault = normalizeBranchChoice(user.defaultBranchId ?? null);
+  if (normalizedDefault && branchIds.includes(normalizedDefault)) {
+    return normalizedDefault;
+  }
+
+  if (branchIds.length === 1) {
+    return branchIds[0] ?? null;
+  }
+
+  return null;
 }
 
 export function AuthProvider({ children }: { children: ReactNode }): React.JSX.Element {
@@ -63,9 +97,12 @@ export function AuthProvider({ children }: { children: ReactNode }): React.JSX.E
   const applyLoginResponse = useCallback((response: LoginResponse): void => {
     localStorage.setItem('access_token', response.accessToken);
     setPendingTenantSelection(null);
+    const previous = readSession();
+    const selectedBranchId = resolveSelectedBranchId(response.user, previous?.selectedBranchId);
     persistSession({
       tenantName: response.tenantName,
       user: response.user,
+      selectedBranchId,
     });
   }, [persistSession]);
 
@@ -134,6 +171,22 @@ export function AuthProvider({ children }: { children: ReactNode }): React.JSX.E
     return response;
   }, [applyLoginResponse]);
 
+  const setSelectedBranchId = useCallback((branchId: string | null): void => {
+    setSession((current) => {
+      if (!current) {
+        return current;
+      }
+
+      const next = resolveSelectedBranchId(current.user, branchId);
+      const updated: SessionState = {
+        ...current,
+        selectedBranchId: next,
+      };
+      localStorage.setItem('session', JSON.stringify(updated));
+      return updated;
+    });
+  }, []);
+
   const refreshUser = useCallback(async (): Promise<void> => {
     const accessToken = localStorage.getItem('access_token');
     if (!accessToken) {
@@ -147,6 +200,7 @@ export function AuthProvider({ children }: { children: ReactNode }): React.JSX.E
       persistSession({
         tenantName: currentSession?.tenantName ?? 'Tenant',
         user,
+        selectedBranchId: resolveSelectedBranchId(user, currentSession?.selectedBranchId),
       });
     } catch {
       localStorage.removeItem('access_token');
@@ -200,6 +254,7 @@ export function AuthProvider({ children }: { children: ReactNode }): React.JSX.E
     () => ({
       user: session?.user ?? null,
       tenantName: session?.tenantName ?? 'Tenant',
+      selectedBranchId: session?.selectedBranchId ?? null,
       isAuthenticated: !!session?.user,
       pendingTenantSelection,
       can,
@@ -210,6 +265,7 @@ export function AuthProvider({ children }: { children: ReactNode }): React.JSX.E
       clearPendingTenantSelection,
       selectTenant,
       switchTenant,
+      setSelectedBranchId,
       refreshUser,
       logout,
     }),
@@ -225,6 +281,7 @@ export function AuthProvider({ children }: { children: ReactNode }): React.JSX.E
       clearPendingTenantSelection,
       selectTenant,
       session,
+      setSelectedBranchId,
       switchTenant,
     ],
   );

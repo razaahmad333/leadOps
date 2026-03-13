@@ -64,7 +64,7 @@ export const CustomEnquiryFieldSchema = LeadFieldConfigSchema.extend({
     .regex(/^[a-z][a-zA-Z0-9_]*$/, 'Use letters, numbers, and underscore. Must start with a lowercase letter.'),
   label: z.string().min(2).max(80),
   section: z.literal('intake').default('intake'),
-});
+}).strict();
 
 export type CustomEnquiryField = z.infer<typeof CustomEnquiryFieldSchema>;
 
@@ -73,7 +73,7 @@ export const TestPackageSchema = z.object({
   name: z.string().min(1).max(120),
   description: z.string().max(400).default(''),
   enabled: z.boolean().default(true),
-});
+}).strict();
 
 export type TestPackage = z.infer<typeof TestPackageSchema>;
 
@@ -102,9 +102,25 @@ export const ThemeConfigSchema = z.object({
   accentColor: z.string().optional(),
   logoMarkUrl: z.string().optional(),
   sidebarTitle: z.string().optional(),
-});
+}).strict();
 
 export type ThemeConfig = z.infer<typeof ThemeConfigSchema>;
+
+export const TenantLoginBrandingSchema = z.object({
+  eyebrow: z.string().min(1).max(80),
+  headline: z.string().min(1).max(220),
+  subheadline: z.string().min(1).max(500),
+  highlightOneLabel: z.string().min(1).max(100),
+  highlightOneText: z.string().min(1).max(200),
+  highlightTwoLabel: z.string().min(1).max(100),
+  highlightTwoText: z.string().min(1).max(200),
+  calloutTitle: z.string().min(1).max(140),
+  calloutText: z.string().min(1).max(300),
+  logoUrl: z.string().url().optional(),
+  logoAlt: z.string().min(1).max(120).optional(),
+}).strict();
+
+export type TenantLoginBranding = z.infer<typeof TenantLoginBrandingSchema>;
 
 export const TenantDisplayConfigSchema = z.object({
   vocabulary: DisplayVocabularySchema,
@@ -119,6 +135,7 @@ export const TenantDisplayConfigSchema = z.object({
   }),
   followupRules: FollowupRulesSchema,
   themeConfig: ThemeConfigSchema.optional(),
+  loginBranding: TenantLoginBrandingSchema.optional(),
   featureFlags: z.record(z.boolean()).default({}),
   customEnquiryFields: z.array(CustomEnquiryFieldSchema).default([]),
   testPackages: z.array(TestPackageSchema).default([]),
@@ -136,3 +153,22 @@ export const TenantProfileSchema = z.object({
 });
 
 export type TenantProfile = z.infer<typeof TenantProfileSchema>;
+
+export const GetPublicTenantBrandingQuerySchema = z.object({
+  tenant: z
+    .string()
+    .trim()
+    .min(2)
+    .max(120)
+    .regex(/^[a-z0-9-]+$/),
+}).strict();
+
+export type GetPublicTenantBrandingQueryDto = z.infer<typeof GetPublicTenantBrandingQuerySchema>;
+
+export const PublicTenantBrandingSchema = z.object({
+  tenantName: z.string(),
+  tenantSlug: z.string(),
+  branding: TenantLoginBrandingSchema,
+});
+
+export type PublicTenantBranding = z.infer<typeof PublicTenantBrandingSchema>;
