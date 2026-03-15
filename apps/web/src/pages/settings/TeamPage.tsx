@@ -18,7 +18,6 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../../context/AuthContext';
-import { useTenant } from '../../context/TenantContext';
 import { api } from '../../lib/api';
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
@@ -36,6 +35,7 @@ import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
 import { PasswordInput } from '../../components/ui/password-input';
 import { PasswordStrengthHints } from '../../components/ui/password-strength-hints';
+import { RefreshButton } from '../../components/ui/refresh-button';
 import { Select } from '../../components/ui/select';
 import { Skeleton } from '../../components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../components/ui/table';
@@ -110,8 +110,7 @@ function branchStatusVariant(isActive: boolean): 'success' | 'secondary' {
 
 export function TeamPage(): React.JSX.Element {
   const { user: currentUser, can } = useAuth();
-  const { dictionary } = useTenant();
-  const adminLabel = dictionary.isDiagnosticsLab ? 'Lab Admin' : 'Tenant Admin';
+  const adminLabel = 'Full Access';
   const canManageBranches = can('branches.manage');
 
   const [users, setUsers] = useState<TeamUser[]>([]);
@@ -419,6 +418,7 @@ export function TeamPage(): React.JSX.Element {
           </p>
         </div>
         <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+          <RefreshButton loading={loading} onClick={() => void loadData()} className="w-full sm:w-auto" />
           {canManageBranches ? (
             <Button
               variant="outline"
@@ -623,11 +623,14 @@ export function TeamPage(): React.JSX.Element {
       </Card>
 
       <Card className="rounded-3xl border-white/80 bg-card/95">
-        <CardHeader>
-          <CardTitle>Branches</CardTitle>
-          <CardDescription>
-            View branch list, update descriptions, and activate/deactivate branches.
-          </CardDescription>
+        <CardHeader className="gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <CardTitle>Branches</CardTitle>
+            <CardDescription>
+              View branch list, update descriptions, and activate/deactivate branches.
+            </CardDescription>
+          </div>
+          <RefreshButton loading={loading} onClick={() => void loadData()} />
         </CardHeader>
         <CardContent>
           {branches.length === 0 ? (
@@ -688,7 +691,7 @@ export function TeamPage(): React.JSX.Element {
           }
         }}
       >
-        <DialogContent>
+        <DialogContent preventImplicitClose>
           <DialogHeader>
             <DialogTitle>Add Branch</DialogTitle>
             <DialogDescription>
@@ -717,9 +720,6 @@ export function TeamPage(): React.JSX.Element {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="secondary" onClick={() => setBranchDialogOpen(false)} disabled={creatingBranch}>
-              Cancel
-            </Button>
             <Button onClick={() => void createBranch()} disabled={creatingBranch}>
               {creatingBranch ? 'Creating...' : 'Create Branch'}
             </Button>
@@ -737,7 +737,7 @@ export function TeamPage(): React.JSX.Element {
           }
         }}
       >
-        <DialogContent>
+        <DialogContent preventImplicitClose>
           <DialogHeader>
             <DialogTitle>Edit Branch</DialogTitle>
             <DialogDescription>
@@ -764,17 +764,6 @@ export function TeamPage(): React.JSX.Element {
             </div>
           </div>
           <DialogFooter>
-            <Button
-              variant="secondary"
-              onClick={() => {
-                setEditBranchDialogOpen(false);
-                setEditingBranch(null);
-                setBranchForm(emptyBranchForm());
-              }}
-              disabled={updatingBranch}
-            >
-              Cancel
-            </Button>
             <Button onClick={() => void updateBranch()} disabled={updatingBranch}>
               {updatingBranch ? 'Saving...' : 'Save Branch'}
             </Button>
@@ -783,7 +772,7 @@ export function TeamPage(): React.JSX.Element {
       </Dialog>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-h-[92vh] overflow-y-auto">
+        <DialogContent className="max-h-[92vh] overflow-y-auto" preventImplicitClose>
           <DialogHeader>
             <DialogTitle>{editingUser ? 'Edit User' : 'Create User'}</DialogTitle>
             <DialogDescription>
@@ -970,9 +959,6 @@ export function TeamPage(): React.JSX.Element {
           {formError ? <p className="text-sm text-destructive">{formError}</p> : null}
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={saving}>
-              Cancel
-            </Button>
             <Button onClick={() => void submit()} disabled={saving}>
               {saving ? 'Saving...' : editingUser ? 'Save Changes' : 'Create User'}
             </Button>

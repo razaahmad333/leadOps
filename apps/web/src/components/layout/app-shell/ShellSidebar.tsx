@@ -2,6 +2,7 @@ import React from 'react';
 import { BookOpenText, ChevronLeft, ChevronRight, CircleHelp } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 import type { UiDictionary } from '../../../lib/ui-dictionary';
+import { industryPresetLabel } from '../../../lib/industry-preset';
 import { cn } from '../../../lib/utils';
 import { Button } from '../../ui/button';
 import { BranchSwitcher } from './BranchSwitcher';
@@ -96,7 +97,7 @@ export function ShellSidebar(props: ShellSidebarProps): React.JSX.Element {
 
               {profileIndustryPreset ? (
                 <p className="text-xs text-muted-foreground">
-                  {profileIndustryPreset === 'DIAGNOSTICS_LAB' ? 'Diagnostics Lab' : 'Generic'}
+                  {industryPresetLabel(profileIndustryPreset)}
                 </p>
               ) : null}
             </div>

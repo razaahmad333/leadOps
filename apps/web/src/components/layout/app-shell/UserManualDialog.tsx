@@ -36,9 +36,10 @@ export function UserManualDialog(props: UserManualDialogProps): React.JSX.Elemen
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Quick Start</p>
             <div className="mt-3 space-y-2 text-sm text-muted-foreground">
               <p>1. Confirm your active branch context before you start daily operations.</p>
-              <p>2. Keep Today queue clear by marking completed follow-ups quickly.</p>
-              <p>3. Update enquiry status and next follow-up together to keep reminders in sync.</p>
-              <p>4. Use Settings modules for controlled operational changes (roles, team, reminders).</p>
+              <p>2. Work the Due Queue with the status filter so overdue and escalated items do not stay hidden.</p>
+              <p>3. Watch the notification bell for reminders, first escalations, and admin-level `L2` escalations.</p>
+              <p>4. Update lead status and next follow-up together to keep reminders, escalations, and dashboards in sync.</p>
+              <p>5. Use Settings modules for controlled operational changes to reminder rules, branch scope, roles, and team access.</p>
             </div>
             <div className="mt-4 flex flex-col gap-2 sm:flex-row">
               <Button onClick={onLaunchTour} className="w-full sm:w-auto">

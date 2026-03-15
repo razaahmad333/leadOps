@@ -38,6 +38,14 @@ export function PlatformAdminPageView(): React.JSX.Element {
     });
   };
 
+  const handleRefreshDirectory = (): void => {
+    void Promise.all([list.loadSummary(), list.loadTenants()]);
+  };
+
+  const handleRefreshDrawer = (): void => {
+    void drawer.refreshCurrentDrawerData();
+  };
+
   if ((list.summaryLoading && !list.summary) || (list.tenantsLoading && list.tenants.length === 0)) {
     return (
       <div className="space-y-5">
@@ -65,6 +73,7 @@ export function PlatformAdminPageView(): React.JSX.Element {
         }}
         onCreateTenant={() => list.setCreateTenantOpen(true)}
         onCreateAccess={() => list.setCreateAccessOpen(true)}
+        onRefresh={handleRefreshDirectory}
         tenants={list.tenants}
         tableEmpty={list.tableEmpty}
         onOpenTenant={drawer.openTenantDrawer}
@@ -88,6 +97,8 @@ export function PlatformAdminPageView(): React.JSX.Element {
         setDrawerTab={drawer.setDrawerTab}
         tenantDetails={drawer.tenantDetails}
         tenantDetailsLoading={drawer.tenantDetailsLoading}
+        onRefresh={handleRefreshDrawer}
+        refreshLoading={drawer.tenantDetailsLoading || drawer.tenantRolesLoading}
         usersPageMeta={drawer.usersPageMeta}
         auditPageMeta={drawer.auditPageMeta}
         tenantRoles={drawer.tenantRoles}

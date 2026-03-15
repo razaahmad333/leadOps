@@ -57,7 +57,7 @@ export function EditUserDialog(props: EditUserDialogProps): React.JSX.Element {
         }
       }}
     >
-      <DialogContent className="max-h-[92vh] overflow-y-auto">
+      <DialogContent className="max-h-[92vh] overflow-y-auto" preventImplicitClose>
         <DialogHeader>
           <DialogTitle>Edit User Info</DialogTitle>
           <DialogDescription>
@@ -321,9 +321,6 @@ export function EditUserDialog(props: EditUserDialogProps): React.JSX.Element {
             )}
 
             <DialogFooter>
-              <Button variant="outline" onClick={onClose}>
-                Cancel
-              </Button>
               <Button disabled={savingEdit} onClick={onSave}>
                 {savingEdit ? 'Saving...' : 'Save Changes'}
               </Button>

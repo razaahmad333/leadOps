@@ -46,7 +46,7 @@ export function CreateAccessDialog(props: CreateAccessDialogProps): React.JSX.El
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-xl">
+      <DialogContent className="sm:max-w-xl" preventImplicitClose>
         <DialogHeader>
           <DialogTitle>Create Account Access</DialogTitle>
           <DialogDescription>
@@ -163,9 +163,6 @@ export function CreateAccessDialog(props: CreateAccessDialogProps): React.JSX.El
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
             <Button disabled={savingMembership || !membershipForm.tenantId} onClick={onCreate}>
               {savingMembership ? 'Creating...' : 'Create Access'}
             </Button>

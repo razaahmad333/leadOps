@@ -6,6 +6,7 @@ import { ProtectedRoute } from './components/ProtectedRoute';
 import { SuperAdminRoute } from './components/SuperAdminRoute';
 import { useAuth } from './context/AuthContext';
 import { DashboardPage } from './pages/DashboardPage';
+import { FaqPage } from './pages/FaqPage';
 import { LeadsPage } from './pages/LeadsPage';
 import { LoginPage } from './pages/LoginPage';
 import { PlatformAdminPage } from './pages/PlatformAdminPage';
@@ -47,6 +48,14 @@ export default function App(): React.JSX.Element {
             element={
               <PermissionRoute permission="followups.view">
                 <TodayPage />
+              </PermissionRoute>
+            }
+          />
+          <Route
+            path="/support/questions"
+            element={
+              <PermissionRoute permission="faq.view">
+                <FaqPage />
               </PermissionRoute>
             }
           />

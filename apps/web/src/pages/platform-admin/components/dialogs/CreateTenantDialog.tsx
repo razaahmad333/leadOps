@@ -30,7 +30,7 @@ export function CreateTenantDialog(props: CreateTenantDialogProps): React.JSX.El
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-xl">
+      <DialogContent className="sm:max-w-xl" preventImplicitClose>
         <DialogHeader>
           <DialogTitle>Create Tenant</DialogTitle>
           <DialogDescription>Create a tenant, seed defaults, and attach the initial tenant admin.</DialogDescription>
@@ -71,6 +71,9 @@ export function CreateTenantDialog(props: CreateTenantDialogProps): React.JSX.El
             >
               <option value="GENERIC">Generic</option>
               <option value="DIAGNOSTICS_LAB">Diagnostics Lab</option>
+              <option value="COSMETIC_CLINIC">Cosmetic Clinic</option>
+              <option value="DENTAL_CLINIC">Dental Clinic</option>
+              <option value="DOCTOR_OPD_CLINIC">Doctor OPD Clinic</option>
             </Select>
           </div>
 
@@ -133,9 +136,6 @@ export function CreateTenantDialog(props: CreateTenantDialogProps): React.JSX.El
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
             <Button disabled={savingTenant} onClick={onCreate}>
               {savingTenant ? 'Creating...' : 'Create Tenant'}
             </Button>

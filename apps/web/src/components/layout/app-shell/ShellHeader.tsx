@@ -1,10 +1,11 @@
 import React from 'react';
-import type { AuthUser } from '@leadops/shared';
+import type { AuthUser, Notification } from '@leadops/shared';
 import { BellRing, Menu, Sparkles } from 'lucide-react';
 import { Button } from '../../ui/button';
 import { Badge } from '../../ui/badge';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../../ui/dropdown-menu';
 import type { UiDictionary } from '../../../lib/ui-dictionary';
+import { industryPresetLabel } from '../../../lib/industry-preset';
 import { BranchSwitcher } from './BranchSwitcher';
 import type { BranchOption } from '../../../lib/branch-scope';
 
@@ -28,7 +29,127 @@ type ShellHeaderProps = {
   branchScopeLabel: string | null;
   selectedBranchId: string | null;
   setSelectedBranchId: (value: string | null) => void;
+  notifications: Notification[];
+  notificationsLoading: boolean;
+  unreadNotificationCount: number;
+  onNotificationsOpenChange: (open: boolean) => void;
+  onMarkNotificationRead: (notificationId: string) => Promise<void>;
+  onMarkAllNotificationsRead: () => Promise<void>;
+  onOpenNotification: (notification: Notification) => Promise<void>;
 };
+
+type NotificationMenuProps = Pick<
+  ShellHeaderProps,
+  | 'notifications'
+  | 'notificationsLoading'
+  | 'unreadNotificationCount'
+  | 'onNotificationsOpenChange'
+  | 'onMarkNotificationRead'
+  | 'onMarkAllNotificationsRead'
+  | 'onOpenNotification'
+>;
+
+function NotificationMenu({
+  notifications,
+  notificationsLoading,
+  unreadNotificationCount,
+  onNotificationsOpenChange,
+  onMarkNotificationRead,
+  onMarkAllNotificationsRead,
+  onOpenNotification,
+}: NotificationMenuProps): React.JSX.Element {
+  const [open, setOpen] = React.useState(false);
+
+  const handleOpenChange = (next: boolean): void => {
+    setOpen(next);
+    onNotificationsOpenChange(next);
+  };
+
+  return (
+    <DropdownMenu open={open} onOpenChange={handleOpenChange}>
+      <DropdownMenuTrigger asChild>
+        <Button variant="secondary" size="icon" className="relative rounded-2xl">
+          <BellRing className="h-4 w-4" />
+          {unreadNotificationCount > 0 ? (
+            <span className="absolute -right-1 -top-1 min-w-5 rounded-full bg-destructive px-1.5 py-0.5 text-[10px] font-semibold leading-none text-destructive-foreground">
+              {unreadNotificationCount > 99 ? '99+' : unreadNotificationCount}
+            </span>
+          ) : null}
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-[22rem] rounded-2xl p-0">
+        <div className="border-b px-4 py-3">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold">Notifications</p>
+              <p className="text-xs text-muted-foreground">
+                {unreadNotificationCount > 0 ? `${unreadNotificationCount} unread` : 'All caught up'}
+              </p>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 rounded-xl px-2 text-xs"
+              disabled={unreadNotificationCount === 0}
+              onClick={() => void onMarkAllNotificationsRead()}
+            >
+              Mark all read
+            </Button>
+          </div>
+        </div>
+
+        <div className="max-h-[22rem] overflow-y-auto p-2">
+          {notificationsLoading ? (
+            <div className="px-3 py-8 text-center text-sm text-muted-foreground">Loading notifications...</div>
+          ) : notifications.length === 0 ? (
+            <div className="px-3 py-8 text-center text-sm text-muted-foreground">No notifications yet.</div>
+          ) : (
+            notifications.map((notification) => (
+              <div
+                key={notification.id}
+                className="rounded-xl border border-transparent px-3 py-3 transition-colors hover:border-border hover:bg-secondary/50"
+              >
+                <button
+                  type="button"
+                  className="w-full text-left"
+                  onClick={() => {
+                    setOpen(false);
+                    void onOpenNotification(notification);
+                  }}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium">{notification.title}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">{notification.message}</p>
+                      <p className="mt-2 text-[11px] text-muted-foreground">
+                        {new Date(notification.createdAt).toLocaleString()}
+                      </p>
+                    </div>
+                    {notification.readAt === null ? (
+                      <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-[var(--tenant-accent,#2f90b7)]" />
+                    ) : null}
+                  </div>
+                </button>
+                {notification.readAt === null ? (
+                  <div className="mt-2 flex justify-end">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 rounded-lg px-2 text-[11px]"
+                      onClick={() => void onMarkNotificationRead(notification.id)}
+                    >
+                      Mark read
+                    </Button>
+                  </div>
+                ) : null}
+              </div>
+            ))
+          )}
+        </div>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
 
 export function ShellHeader(props: ShellHeaderProps): React.JSX.Element {
   const {
@@ -45,6 +166,13 @@ export function ShellHeader(props: ShellHeaderProps): React.JSX.Element {
     branchScopeLabel,
     selectedBranchId,
     setSelectedBranchId,
+    notifications,
+    notificationsLoading,
+    unreadNotificationCount,
+    onNotificationsOpenChange,
+    onMarkNotificationRead,
+    onMarkAllNotificationsRead,
+    onOpenNotification,
   } = props;
 
   return (
@@ -68,9 +196,15 @@ export function ShellHeader(props: ShellHeaderProps): React.JSX.Element {
           </div>
 
           <div className="flex shrink-0 items-center gap-2">
-            <Button variant="secondary" size="icon" className="rounded-2xl">
-              <BellRing className="h-4 w-4" />
-            </Button>
+            <NotificationMenu
+              notifications={notifications}
+              notificationsLoading={notificationsLoading}
+              unreadNotificationCount={unreadNotificationCount}
+              onNotificationsOpenChange={onNotificationsOpenChange}
+              onMarkNotificationRead={onMarkNotificationRead}
+              onMarkAllNotificationsRead={onMarkAllNotificationsRead}
+              onOpenNotification={onOpenNotification}
+            />
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -114,9 +248,15 @@ export function ShellHeader(props: ShellHeaderProps): React.JSX.Element {
             </div>
 
             <div className="flex shrink-0 items-center gap-2">
-              <Button variant="secondary" size="icon" className="rounded-2xl">
-                <BellRing className="h-4 w-4" />
-              </Button>
+              <NotificationMenu
+                notifications={notifications}
+                notificationsLoading={notificationsLoading}
+                unreadNotificationCount={unreadNotificationCount}
+                onNotificationsOpenChange={onNotificationsOpenChange}
+                onMarkNotificationRead={onMarkNotificationRead}
+                onMarkAllNotificationsRead={onMarkAllNotificationsRead}
+                onOpenNotification={onOpenNotification}
+              />
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -150,7 +290,7 @@ export function ShellHeader(props: ShellHeaderProps): React.JSX.Element {
             />
             {profileIndustryPreset ? (
               <Badge variant="outline" className="rounded-full border-white/70 bg-background/90 px-3 py-1">
-                {profileIndustryPreset === 'DIAGNOSTICS_LAB' ? 'Diagnostics Lab' : 'Generic'}
+                {industryPresetLabel(profileIndustryPreset)}
               </Badge>
             ) : null}
             {dictionary.featureFlags.aiAssist ? (

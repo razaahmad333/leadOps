@@ -12,15 +12,15 @@ import { PasswordInput } from '../components/ui/password-input';
 
 const DEFAULT_LOGIN_BRANDING: TenantLoginBranding = {
   eyebrow: 'HikmahOne',
-  headline: 'Run your diagnostic lab with faster follow-ups and fewer missed patients.',
+  headline: 'Run your workspace with faster follow-ups and clearer next steps.',
   subheadline:
-    'Track patient enquiries, booking intent, report delivery, and post-report follow-ups in one focused workspace built for lab operations.',
-  highlightOneLabel: 'Booking pipeline',
-  highlightOneText: 'See every enquiry in motion',
-  highlightTwoLabel: 'Report follow-through',
-  highlightTwoText: 'Reduce missed post-report calls',
-  calloutTitle: 'Built for diagnostics teams',
-  calloutText: 'Give reception, operations, and lab owners a clear view of what needs action across bookings and follow-ups.',
+    'Track intake, conversions, and follow-up work in one focused workspace built for day-to-day operations.',
+  highlightOneLabel: 'Pipeline visibility',
+  highlightOneText: 'See every record in motion',
+  highlightTwoLabel: 'Follow-up control',
+  highlightTwoText: 'Reduce missed task handoffs',
+  calloutTitle: 'Built for operating teams',
+  calloutText: 'Give teams a clear view of what needs action across pipeline work and follow-ups.',
 };
 
 function resolveApiOrigin(): string {
@@ -49,12 +49,11 @@ export function LoginPage(): React.JSX.Element {
   } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const showDevHints = import.meta.env.DEV;
   const tenantSlug = searchParams.get('tenant')?.trim().toLowerCase() ?? '';
 
-  const [identifier, setIdentifier] = useState(showDevHints ? 'owner@local.test' : '');
-  const [password, setPassword] = useState(showDevHints ? 'Password123!' : '');
-  const [otpPhone, setOtpPhone] = useState(showDevHints ? '+1-555-0101' : '');
+  const [identifier, setIdentifier] = useState('');
+  const [password, setPassword] = useState('');
+  const [otpPhone, setOtpPhone] = useState('');
   const [otpCode, setOtpCode] = useState('');
   const [verificationId, setVerificationId] = useState<string | null>(null);
   const [mode, setMode] = useState<'password' | 'otp'>('password');
@@ -65,6 +64,13 @@ export function LoginPage(): React.JSX.Element {
     () => publicBranding?.branding ?? DEFAULT_LOGIN_BRANDING,
     [publicBranding],
   );
+  const passwordModeDescription = useMemo(() => {
+    if (publicBranding?.tenantName) {
+      return `Access your ${publicBranding.tenantName} workspace`;
+    }
+
+    return 'Access your workspace';
+  }, [publicBranding?.tenantName]);
 
   useEffect(() => {
     if (!user) {
@@ -143,9 +149,6 @@ export function LoginPage(): React.JSX.Element {
     try {
       const response = await requestLoginOtp(otpPhone);
       setVerificationId(response.verificationId);
-      if (response.devOtpCode) {
-        setOtpCode(response.devOtpCode);
-      }
       toast.success('OTP sent to your mobile number');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Unable to send OTP');
@@ -247,7 +250,7 @@ export function LoginPage(): React.JSX.Element {
           <CardHeader className="pb-4">
             <CardTitle className="text-2xl">Sign in</CardTitle>
             <CardDescription>
-              {mode === 'password' ? 'Access your diagnostic lab workspace' : 'Forgot your password? Use OTP login'}
+              {mode === 'password' ? passwordModeDescription : 'Forgot your password? Use OTP login'}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -403,14 +406,6 @@ export function LoginPage(): React.JSX.Element {
               </form>
             )}
 
-            {showDevHints ? (
-              <div className="mt-5 rounded-2xl border border-white/70 bg-secondary/30 p-4 text-xs text-muted-foreground">
-                <p>Super Admin: `admin@local.test` or `+1-555-0001`</p>
-                <p>Shared Owner: `owner@local.test` or `+1-555-0101`</p>
-                <p>Shared Staff: `staff@local.test` or `+1-555-0102`</p>
-                <p>Password for all users: `Password123!`</p>
-              </div>
-            ) : null}
           </CardContent>
         </Card>
       </div>

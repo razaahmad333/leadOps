@@ -92,6 +92,7 @@ export function buildTenantSettingsDraft(settings: TenantSettings): TenantSettin
     timezone: settings.timezone,
     businessStart: settings.businessStart,
     businessEnd: settings.businessEnd,
+    defaultLeadFollowupMinutes: String(settings.reminderRules.defaultLeadFollowupMinutes),
     firstReminderMinutes: String(settings.reminderRules.firstReminderMinutes),
     escalationMinutes: String(settings.reminderRules.escalationMinutes),
     postReportFollowupDays: String(settings.reminderRules.postReportFollowupDays),

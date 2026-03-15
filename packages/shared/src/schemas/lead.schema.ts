@@ -19,6 +19,7 @@ export const CreateLeadSchema = z.object({
   ownerId: z.string().uuid().optional(),
   branchId: z.string().uuid().optional(),
   stageKey: z.string().trim().min(1).max(80).optional(),
+  followUpPurposeKey: z.string().trim().min(1).max(80).optional(),
   intakeData: z.record(z.unknown()).optional(),
   nextFollowUpAt: DateFromInput,
   note: z.string().trim().max(1000).optional(),
@@ -30,6 +31,7 @@ export const UpdateLeadStatusSchema = z.object({
   status: z.nativeEnum(LeadStatus).optional(),
   stageKey: z.string().trim().min(1).max(80).optional(),
   nextFollowUpAt: DateFromInput.optional(),
+  followUpPurposeKey: z.string().trim().min(1).max(80).optional(),
 }).strict();
 
 export type UpdateLeadStatusDto = z.infer<typeof UpdateLeadStatusSchema>;
@@ -66,9 +68,24 @@ const OptionalTrimmedString = z.preprocess((value) => {
   return normalized.length > 0 ? normalized : undefined;
 }, z.string().optional());
 
+const OptionalDateFromInput = z.preprocess((value) => {
+  if (value === undefined || value === null || value === '') {
+    return undefined;
+  }
+  if (value instanceof Date) return value;
+  if (typeof value === 'number') return new Date(value);
+  if (typeof value === 'string') {
+    const normalized = value.trim().replace(/^"|"$/g, '');
+    return normalized ? new Date(normalized) : undefined;
+  }
+  return value;
+}, z.date().optional());
+
 export const ListLeadsQuerySchema = z.object({
   search: OptionalTrimmedString,
   stageKey: OptionalTrimmedString,
+  createdFrom: OptionalDateFromInput,
+  createdTo: OptionalDateFromInput,
   branchId: z.preprocess((value) => {
     if (typeof value !== 'string') {
       return value;
@@ -108,10 +125,13 @@ export const LeadDetailSchema = z.object({
     z.object({
       id: z.string(),
       kind: z.string(),
+      purposeKey: z.string().nullable(),
+      purposeLabel: z.string().nullable(),
       scheduledAt: z.coerce.date(),
       done: z.boolean(),
       note: z.string().nullable(),
       escalatedAt: z.coerce.date().nullable(),
+      secondEscalatedAt: z.coerce.date().nullable(),
     }),
   ),
   activities: z.array(LeadActivitySchema),

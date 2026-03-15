@@ -35,7 +35,7 @@ export function CreateBranchDialog(props: CreateBranchDialogProps): React.JSX.El
         }
       }}
     >
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-lg" preventImplicitClose>
         <DialogHeader>
           <DialogTitle>Create Branch</DialogTitle>
           <DialogDescription>Create a branch for this tenant.</DialogDescription>
@@ -66,9 +66,6 @@ export function CreateBranchDialog(props: CreateBranchDialogProps): React.JSX.El
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={onClose}>
-              Cancel
-            </Button>
             <Button disabled={savingBranch} onClick={onCreate}>
               {savingBranch ? 'Saving...' : 'Create Branch'}
             </Button>

@@ -37,11 +37,14 @@ model Tenant {
   users          User[]
   leads          Lead[]
   followUps      FollowUp[]
+  notifications  Notification[]
   leadActivities LeadActivity[]
   auditEvents    TenantAuditEvent[]
   webhookEvents  WebhookMessage[]
   roles          PermissionRole[]
   branches       Branch[]
+  loginSummaries UserLoginSummary[]
+  faqQuestions   FaqQuestion[]
 
   @@map("tenants")
 }
@@ -100,17 +103,36 @@ model User {
   tenant         Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   defaultBranch  Branch?            @relation("UserDefaultBranch", fields: [defaultBranchId], references: [id], onDelete: SetNull)
   followUps      FollowUp[]
+  notifications  Notification[]
   activities     LeadActivity[]
   auditEvents    TenantAuditEvent[]
   ownedLeads     Lead[]             @relation("LeadOwner")
   userRoles      UserRole[]
   branchScopes   UserBranchScope[]
+  loginSummary   UserLoginSummary?
+  faqQuestionsAsked FaqQuestion[]   @relation("FaqAskedBy")
+  faqQuestionsAnswered FaqQuestion[] @relation("FaqAnsweredBy")
 
   @@unique([tenantId, accountId])
   @@unique([tenantId, email])
   @@index([tenantId, status])
   @@index([accountId])
   @@map("users")
+}
+
+model UserLoginSummary {
+  userId         String   @id @map("user_id")
+  tenantId       String   @map("tenant_id")
+  firstLoggedInAt DateTime @map("first_logged_in_at")
+  lastLoggedInAt DateTime @map("last_logged_in_at")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, firstLoggedInAt])
+  @@map("user_login_summaries")
 }
 
 model Permission {
@@ -181,6 +203,8 @@ model Branch {
   usersDefault  User[]             @relation("UserDefaultBranch")
   usersScopes   UserBranchScope[]
   leads         Lead[]
+  notifications Notification[]
+  faqQuestions  FaqQuestion[]
 
   @@unique([tenantId, name])
   @@index([tenantId])
@@ -219,12 +243,14 @@ model Lead {
   owner      User?          @relation("LeadOwner", fields: [ownerId], references: [id], onDelete: SetNull)
   branch     Branch?        @relation(fields: [branchId], references: [id], onDelete: SetNull)
   followUps  FollowUp[]
+  notifications Notification[]
   activities LeadActivity[]
 
   @@index([tenantId, status])
   @@index([tenantId, stageKey])
   @@index([tenantId, nextFollowUpAt])
   @@index([tenantId, branchId])
+  @@index([tenantId, branchId, id])
   @@map("leads")
 }
 
@@ -234,20 +260,50 @@ model FollowUp {
   leadId      String    @map("lead_id")
   assignedTo  String?   @map("assigned_to")
   kind        String    @default("GENERAL")
+  purposeKey  String?   @map("purpose_key")
+  purposeLabelSnapshot String? @map("purpose_label_snapshot")
   scheduledAt DateTime  @map("scheduled_at")
   note        String?
   done        Boolean   @default(false)
   doneAt      DateTime? @map("done_at")
   escalatedAt DateTime? @map("escalated_at")
+  secondEscalatedAt DateTime? @map("second_escalated_at")
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   lead   Lead   @relation(fields: [leadId], references: [id], onDelete: Cascade)
   user   User?  @relation(fields: [assignedTo], references: [id], onDelete: SetNull)
+  notifications Notification[]
 
   @@index([tenantId, done, scheduledAt])
+  @@index([tenantId, leadId, done, scheduledAt])
   @@map("follow_ups")
+}
+
+model Notification {
+  id         String    @id @default(uuid())
+  tenantId   String    @map("tenant_id")
+  userId     String    @map("user_id")
+  branchId   String?   @map("branch_id")
+  leadId     String    @map("lead_id")
+  followUpId String    @map("follow_up_id")
+  type       String
+  title      String
+  message    String
+  readAt     DateTime? @map("read_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  branch   Branch?  @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  lead     Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  followUp FollowUp @relation(fields: [followUpId], references: [id], onDelete: Cascade)
+
+  @@unique([followUpId, type])
+  @@index([tenantId, userId, readAt, createdAt])
+  @@index([followUpId])
+  @@map("notifications")
 }
 
 model LeadActivity {
@@ -266,6 +322,30 @@ model LeadActivity {
 
   @@index([tenantId, leadId, createdAt])
   @@map("lead_activities")
+}
+
+model FaqQuestion {
+  id           String   @id @default(uuid())
+  tenantId     String   @map("tenant_id")
+  branchId     String?  @map("branch_id")
+  askedById    String   @map("asked_by_id")
+  answeredById String?  @map("answered_by_id")
+  question     String
+  answer       String?
+  status       String   @default("OPEN")
+  answeredAt   DateTime? @map("answered_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  tenant     Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch     Branch? @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  askedBy    User   @relation("FaqAskedBy", fields: [askedById], references: [id], onDelete: Cascade)
+  answeredBy User?  @relation("FaqAnsweredBy", fields: [answeredById], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, status, createdAt])
+  @@index([tenantId, askedById, createdAt])
+  @@index([tenantId, branchId, createdAt])
+  @@map("faq_questions")
 }
 
 model TenantAuditEvent {

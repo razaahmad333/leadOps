@@ -99,7 +99,21 @@ export function SettingsTab(props: SettingsTabProps): React.JSX.Element | null {
           </div>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-4">
+          <div className="space-y-2">
+            <Label htmlFor="drawer-default-followup">Default Next Follow-up (min)</Label>
+            <Input
+              id="drawer-default-followup"
+              type="number"
+              min={1}
+              value={tenantSettingsDraft.defaultLeadFollowupMinutes}
+              onChange={(event) =>
+                setTenantSettingsDraft((current) =>
+                  current ? { ...current, defaultLeadFollowupMinutes: event.target.value } : current,
+                )
+              }
+            />
+          </div>
           <div className="space-y-2">
             <Label htmlFor="drawer-first-reminder">Initial Reminder (min)</Label>
             <Input

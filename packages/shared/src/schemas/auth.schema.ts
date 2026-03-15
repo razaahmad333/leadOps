@@ -20,7 +20,6 @@ export type RequestLoginOtpDto = z.infer<typeof RequestLoginOtpSchema>;
 
 export const RequestLoginOtpResponseSchema = z.object({
   verificationId: z.string(),
-  devOtpCode: z.string().nullable().optional(),
 });
 
 export type RequestLoginOtpResponse = z.infer<typeof RequestLoginOtpResponseSchema>;

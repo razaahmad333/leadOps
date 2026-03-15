@@ -2,10 +2,12 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { Prisma, Tenant } from '@prisma/client';
 import {
   CustomEnquiryField,
+  FollowupPurposeOption,
   FollowupRules,
   IndustryPreset,
   LeadStatus,
   MilestoneKey,
+  OpdDirectory,
   PipelineStage,
   TenantDisplayConfig,
   TenantDisplayConfigSchema,
@@ -77,6 +79,7 @@ export class TenantConfigService {
           businessEnd: '18:00',
           stages: ['New', 'Contacted', 'Qualified', 'Pending', 'Won', 'Lost'],
           reminderRules: {
+            defaultLeadFollowupMinutes: 120,
             firstReminderMinutes: 30,
             escalationMinutes: 120,
             postReportFollowupDays: 3,
@@ -143,6 +146,7 @@ export class TenantConfigService {
       businessEnd: configRecord?.businessEnd ?? '18:00',
       stages: profile.displayConfig.pipelineConfig.stages.map((stage) => stage.label),
       reminderRules: {
+        defaultLeadFollowupMinutes: profile.displayConfig.followupRules.defaultLeadFollowupMinutes,
         firstReminderMinutes: profile.displayConfig.followupRules.firstReminderMinutes,
         escalationMinutes: profile.displayConfig.followupRules.escalationMinutes,
         postReportFollowupDays: profile.displayConfig.followupRules.postReportFollowupDays,
@@ -161,6 +165,10 @@ export class TenantConfigService {
     return {
       customEnquiryFields: profile.displayConfig.customEnquiryFields,
       testPackages: profile.displayConfig.testPackages,
+      opdDirectory: profile.displayConfig.opdDirectory ?? {
+        departments: [],
+        doctors: [],
+      },
     };
   }
 
@@ -203,6 +211,7 @@ export class TenantConfigService {
 
     const normalizedCustomFields = this.normalizeCustomEnquiryFields(input.customEnquiryFields);
     const normalizedTestPackages = this.normalizeTestPackages(input.testPackages);
+    const normalizedOpdDirectory = this.normalizeOpdDirectory(input.opdDirectory);
 
     this.validateCustomFieldCollisions(profile.displayConfig, normalizedCustomFields);
     this.validateRequiredTestPackageAvailability(profile.displayConfig, normalizedTestPackages);
@@ -211,6 +220,7 @@ export class TenantConfigService {
       ...profile.displayConfig,
       customEnquiryFields: normalizedCustomFields,
       testPackages: normalizedTestPackages,
+      opdDirectory: normalizedOpdDirectory,
     });
 
     await this.persistTenantDisplayConfig({
@@ -224,6 +234,10 @@ export class TenantConfigService {
     return {
       customEnquiryFields: nextDisplayConfig.customEnquiryFields,
       testPackages: nextDisplayConfig.testPackages,
+      opdDirectory: nextDisplayConfig.opdDirectory ?? {
+        departments: [],
+        doctors: [],
+      },
     };
   }
 
@@ -260,6 +274,9 @@ export class TenantConfigService {
     const currentRules = profile.displayConfig.followupRules;
     const nextRules = {
       ...currentRules,
+      ...(input.reminderRules?.defaultLeadFollowupMinutes !== undefined
+        ? { defaultLeadFollowupMinutes: input.reminderRules.defaultLeadFollowupMinutes }
+        : {}),
       ...(input.reminderRules?.firstReminderMinutes !== undefined
         ? { firstReminderMinutes: input.reminderRules.firstReminderMinutes }
         : {}),
@@ -298,6 +315,7 @@ export class TenantConfigService {
         businessStart: nextBusinessStart,
         businessEnd: nextBusinessEnd,
         reminderRules: {
+          defaultLeadFollowupMinutes: nextRules.defaultLeadFollowupMinutes,
           firstReminderMinutes: nextRules.firstReminderMinutes,
           escalationMinutes: nextRules.escalationMinutes,
           postReportFollowupDays: nextRules.postReportFollowupDays,
@@ -355,6 +373,55 @@ export class TenantConfigService {
     return stage?.milestone ?? null;
   }
 
+  async resolveFollowupPurpose(
+    input: {
+      stageKey?: string | null;
+      purposeKey?: string | null;
+      tenantId?: string;
+      fallbackKey?: string;
+      fallbackLabel?: string;
+    },
+  ): Promise<{ key: string; label: string; guidance?: string; purposes: FollowupPurposeOption[] }> {
+    const stage = input.stageKey
+      ? await this.resolveStage(input.stageKey, input.tenantId)
+      : await this.getDefaultStage(input.tenantId);
+
+    if (stage) {
+      const matchedPurpose = input.purposeKey
+        ? stage.followupPurposes.find((purpose) => purpose.key === input.purposeKey)
+        : null;
+
+      if (input.purposeKey && !matchedPurpose) {
+        throw new BadRequestException(`Purpose ${input.purposeKey} is not allowed for stage ${stage.key}`);
+      }
+
+      const defaultPurpose =
+        matchedPurpose
+        ?? stage.followupPurposes.find((purpose) => purpose.key === stage.defaultFollowupPurposeKey)
+        ?? stage.followupPurposes[0];
+
+      if (defaultPurpose) {
+        return {
+          key: defaultPurpose.key,
+          label: defaultPurpose.label,
+          guidance: stage.followupGuidance,
+          purposes: stage.followupPurposes,
+        };
+      }
+    }
+
+    return {
+      key: input.fallbackKey ?? 'general_followup',
+      label: input.fallbackLabel ?? 'General Follow-up',
+      purposes: [
+        {
+          key: input.fallbackKey ?? 'general_followup',
+          label: input.fallbackLabel ?? 'General Follow-up',
+        },
+      ],
+    };
+  }
+
   async normalizeToBusinessWindow(value: Date, tenantId?: string): Promise<Date> {
     const settings = await this.getSettings(tenantId);
     const timezone = settings.timezone;
@@ -389,8 +456,13 @@ export class TenantConfigService {
   }
 
   private parseIndustryPreset(value: string): IndustryPreset {
-    if (value === IndustryPreset.DIAGNOSTICS_LAB) {
-      return IndustryPreset.DIAGNOSTICS_LAB;
+    if (
+      value === IndustryPreset.DIAGNOSTICS_LAB
+      || value === 'COSMETIC_CLINIC'
+      || value === 'DENTAL_CLINIC'
+      || value === 'DOCTOR_OPD_CLINIC'
+    ) {
+      return value as IndustryPreset;
     }
 
     return IndustryPreset.GENERIC;
@@ -406,7 +478,20 @@ export class TenantConfigService {
       return this.applyDerivedIntakeConfig(base);
     }
 
-    const merged = this.deepMerge(base, overrideConfig as Record<string, unknown>);
+    const source = overrideConfig as Record<string, unknown>;
+    const merged = this.deepMerge(base, source);
+    const sourcePipelineConfig =
+      source.pipelineConfig && typeof source.pipelineConfig === 'object'
+        ? (source.pipelineConfig as Record<string, unknown>)
+        : null;
+
+    if (sourcePipelineConfig && Array.isArray(sourcePipelineConfig.stages)) {
+      merged.pipelineConfig = {
+        ...merged.pipelineConfig,
+        stages: this.mergePipelineStages(base.pipelineConfig.stages, sourcePipelineConfig.stages),
+      };
+    }
+
     const parsed = TenantDisplayConfigSchema.safeParse(merged);
 
     if (!parsed.success) {
@@ -446,6 +531,24 @@ export class TenantConfigService {
     return output as T;
   }
 
+  private mergePipelineStages(baseStages: PipelineStage[], overrideStages: unknown[]): PipelineStage[] {
+    return overrideStages.map((stage) => {
+      if (!stage || typeof stage !== 'object') {
+        return stage as PipelineStage;
+      }
+
+      const overrideStage = stage as Record<string, unknown>;
+      const stageKey = typeof overrideStage.key === 'string' ? overrideStage.key : null;
+      const baseStage = stageKey ? baseStages.find((item) => item.key === stageKey) : null;
+
+      if (!baseStage) {
+        return overrideStage as unknown as PipelineStage;
+      }
+
+      return this.deepMerge(baseStage as unknown as Record<string, unknown>, overrideStage) as PipelineStage;
+    });
+  }
+
   private async persistDisplayConfigIfNeeded(
     tenant: Tenant & { config: { id: string } | null },
     rawDisplayConfig: unknown,
@@ -474,6 +577,7 @@ export class TenantConfigService {
         businessEnd,
         stages: mergedDisplayConfig.pipelineConfig.stages.map((stage) => stage.label),
         reminderRules: {
+          defaultLeadFollowupMinutes: mergedDisplayConfig.followupRules.defaultLeadFollowupMinutes,
           firstReminderMinutes: mergedDisplayConfig.followupRules.firstReminderMinutes,
           escalationMinutes: mergedDisplayConfig.followupRules.escalationMinutes,
           postReportFollowupDays: mergedDisplayConfig.followupRules.postReportFollowupDays,
@@ -490,6 +594,7 @@ export class TenantConfigService {
         businessEnd,
         stages: mergedDisplayConfig.pipelineConfig.stages.map((stage) => stage.label),
         reminderRules: {
+          defaultLeadFollowupMinutes: mergedDisplayConfig.followupRules.defaultLeadFollowupMinutes,
           firstReminderMinutes: mergedDisplayConfig.followupRules.firstReminderMinutes,
           escalationMinutes: mergedDisplayConfig.followupRules.escalationMinutes,
           postReportFollowupDays: mergedDisplayConfig.followupRules.postReportFollowupDays,
@@ -536,6 +641,10 @@ export class TenantConfigService {
     const normalizedTestPackages = this.normalizeTestPackages(
       this.resolveTestPackages(config.testPackages, config.leadFieldsConfig.fields),
     );
+    const normalizedOpdDirectory = this.normalizeOpdDirectory(config.opdDirectory ?? {
+      departments: [],
+      doctors: [],
+    });
     const customFieldKeys = new Set(normalizedCustomFields.map((field) => field.key));
 
     const baseFields = config.leadFieldsConfig.fields.filter((field) => !customFieldKeys.has(field.key));
@@ -557,10 +666,35 @@ export class TenantConfigService {
       }
     }
 
+    const departmentFieldIndex = baseFields.findIndex(
+      (field) => field.key === 'departmentOrSpeciality' && field.type === 'select',
+    );
+    if (departmentFieldIndex >= 0) {
+      baseFields[departmentFieldIndex] = {
+        ...baseFields[departmentFieldIndex],
+        options: normalizedOpdDirectory.departments
+          .filter((department) => department.isActive)
+          .map((department) => department.name),
+      };
+    }
+
+    const doctorFieldIndex = baseFields.findIndex(
+      (field) => field.key === 'preferredDoctor' && field.type === 'select',
+    );
+    if (doctorFieldIndex >= 0) {
+      baseFields[doctorFieldIndex] = {
+        ...baseFields[doctorFieldIndex],
+        options: normalizedOpdDirectory.doctors
+          .filter((doctor) => doctor.enabled)
+          .map((doctor) => doctor.name),
+      };
+    }
+
     return {
       ...config,
       customEnquiryFields: normalizedCustomFields,
       testPackages: normalizedTestPackages,
+      opdDirectory: normalizedOpdDirectory,
       leadFieldsConfig: {
         ...config.leadFieldsConfig,
         fields: [...baseFields, ...normalizedCustomFields],
@@ -647,6 +781,65 @@ export class TenantConfigService {
         enabled: pkg.enabled,
       };
     });
+  }
+
+  private normalizeOpdDirectory(directory: OpdDirectory): OpdDirectory {
+    const seenDepartmentIds = new Set<string>();
+    const departments = directory.departments.map((department, index) => {
+      const name = department.name.trim();
+      const id = (department.id || this.slugify(name) || `department-${index + 1}`).trim();
+
+      if (!name) {
+        throw new BadRequestException(`Department at position ${index + 1} must have a name`);
+      }
+
+      if (!id || seenDepartmentIds.has(id)) {
+        throw new BadRequestException(`Duplicate or invalid department id at position ${index + 1}`);
+      }
+
+      seenDepartmentIds.add(id);
+
+      return {
+        id,
+        name,
+        isActive: department.isActive,
+      };
+    });
+
+    const departmentIds = new Set(departments.map((department) => department.id));
+    const seenDoctorIds = new Set<string>();
+    const doctors = directory.doctors.map((doctor, index) => {
+      const name = doctor.name.trim();
+      const id = (doctor.id || this.slugify(name) || `doctor-${index + 1}`).trim();
+
+      if (!name) {
+        throw new BadRequestException(`Doctor at position ${index + 1} must have a name`);
+      }
+
+      if (!id || seenDoctorIds.has(id)) {
+        throw new BadRequestException(`Duplicate or invalid doctor id at position ${index + 1}`);
+      }
+
+      const normalizedDepartmentIds = [...new Set(doctor.departmentIds.map((departmentId) => departmentId.trim()).filter(Boolean))];
+      const invalidDepartmentId = normalizedDepartmentIds.find((departmentId) => !departmentIds.has(departmentId));
+      if (invalidDepartmentId) {
+        throw new BadRequestException(`Doctor "${name}" references an unknown department`);
+      }
+
+      seenDoctorIds.add(id);
+
+      return {
+        id,
+        name,
+        departmentIds: normalizedDepartmentIds,
+        enabled: doctor.enabled,
+      };
+    });
+
+    return {
+      departments,
+      doctors,
+    };
   }
 
   private validateCustomFieldCollisions(
@@ -745,6 +938,13 @@ export class TenantConfigService {
 
     if (input.currentBusinessEnd !== input.nextBusinessEnd) {
       changes.businessEnd = { from: input.currentBusinessEnd, to: input.nextBusinessEnd };
+    }
+
+    if (input.currentRules.defaultLeadFollowupMinutes !== input.nextRules.defaultLeadFollowupMinutes) {
+      changes.defaultLeadFollowupMinutes = {
+        from: input.currentRules.defaultLeadFollowupMinutes,
+        to: input.nextRules.defaultLeadFollowupMinutes,
+      };
     }
 
     if (input.currentRules.firstReminderMinutes !== input.nextRules.firstReminderMinutes) {

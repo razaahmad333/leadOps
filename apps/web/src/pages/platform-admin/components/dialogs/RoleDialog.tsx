@@ -58,7 +58,7 @@ export function RoleDialog(props: RoleDialogProps): React.JSX.Element {
         }
       }}
     >
-      <DialogContent className="max-h-[92vh] overflow-y-auto">
+      <DialogContent className="max-h-[92vh] overflow-y-auto" preventImplicitClose>
         <DialogHeader>
           <DialogTitle>{editingRole ? 'Edit Role' : 'Create Role'}</DialogTitle>
           <DialogDescription>
@@ -137,9 +137,6 @@ export function RoleDialog(props: RoleDialogProps): React.JSX.Element {
         {roleFormError ? <p className="text-sm text-destructive">{roleFormError}</p> : null}
 
         <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={savingRole}>
-            Cancel
-          </Button>
           <Button onClick={onSave} disabled={savingRole || permissionGroupsLoading}>
             {savingRole ? 'Saving...' : editingRole ? 'Save Changes' : 'Create Role'}
           </Button>

@@ -46,7 +46,7 @@ export function ResetPasswordDialog(props: ResetPasswordDialogProps): React.JSX.
         }
       }}
     >
-      <DialogContent>
+      <DialogContent preventImplicitClose>
         <DialogHeader>
           <DialogTitle>Reset Password</DialogTitle>
           <DialogDescription>
@@ -92,9 +92,6 @@ export function ResetPasswordDialog(props: ResetPasswordDialogProps): React.JSX.
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={onClose}>
-              Cancel
-            </Button>
             <Button disabled={savingPassword} onClick={onSave}>
               {savingPassword ? 'Saving...' : 'Update Password'}
             </Button>

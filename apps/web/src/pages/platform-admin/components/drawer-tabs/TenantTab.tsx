@@ -1,6 +1,7 @@
 import React from 'react';
 import type { PlatformTenantDetails } from '@leadops/shared';
 import { Card, CardContent } from '../../../../components/ui/card';
+import { industryPresetLabel } from '../../../../lib/industry-preset';
 
 type TenantTabProps = {
   tenant: PlatformTenantDetails['tenant'];
@@ -17,7 +18,7 @@ export function TenantTab({ tenant }: TenantTabProps): React.JSX.Element {
         <div>
           <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Industry</p>
           <p className="mt-1 font-medium">
-            {tenant.industryPreset === 'DIAGNOSTICS_LAB' ? 'Diagnostics Lab' : 'Generic'}
+            {industryPresetLabel(tenant.industryPreset)}
           </p>
         </div>
         <div>

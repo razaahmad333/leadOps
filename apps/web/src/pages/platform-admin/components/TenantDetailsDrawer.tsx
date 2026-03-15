@@ -7,6 +7,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from '../../../components/ui/sheet';
+import { RefreshButton } from '../../../components/ui/refresh-button';
 import { Skeleton } from '../../../components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../../components/ui/tabs';
 import type { DrawerTab, TenantSettingsDraft } from '../platform-admin.types';
@@ -24,6 +25,8 @@ type TenantDetailsDrawerProps = {
   setDrawerTab: React.Dispatch<React.SetStateAction<DrawerTab>>;
   tenantDetails: PlatformTenantDetails | null;
   tenantDetailsLoading: boolean;
+  onRefresh: () => void;
+  refreshLoading: boolean;
 
   usersPageMeta: PlatformTenantDetails['usersPage'];
   auditPageMeta: PlatformTenantDetails['auditEventsPage'];
@@ -65,6 +68,8 @@ export function TenantDetailsDrawer(props: TenantDetailsDrawerProps): React.JSX.
     setDrawerTab,
     tenantDetails,
     tenantDetailsLoading,
+    onRefresh,
+    refreshLoading,
     usersPageMeta,
     auditPageMeta,
     tenantRoles,
@@ -94,10 +99,15 @@ export function TenantDetailsDrawer(props: TenantDetailsDrawerProps): React.JSX.
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="sm:max-w-4xl">
         <SheetHeader>
-          <SheetTitle>{tenantDetails?.tenant.name ?? 'Tenant details'}</SheetTitle>
-          <SheetDescription>
-            Inspect tenant settings, users, branches, and recent audit events.
-          </SheetDescription>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <SheetTitle>{tenantDetails?.tenant.name ?? 'Tenant details'}</SheetTitle>
+              <SheetDescription>
+                Inspect tenant settings, users, branches, and recent audit events.
+              </SheetDescription>
+            </div>
+            <RefreshButton loading={refreshLoading} onClick={onRefresh} />
+          </div>
         </SheetHeader>
 
         {tenantDetailsLoading || !tenantDetails ? (

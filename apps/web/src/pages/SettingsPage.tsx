@@ -29,10 +29,13 @@ export function SettingsPage(): React.JSX.Element {
   const [timezoneSearch, setTimezoneSearch] = useState('');
   const [businessStartDraft, setBusinessStartDraft] = useState('');
   const [businessEndDraft, setBusinessEndDraft] = useState('');
+  const [defaultLeadFollowupDraft, setDefaultLeadFollowupDraft] = useState('');
   const [firstReminderDraft, setFirstReminderDraft] = useState('');
   const [escalationDraft, setEscalationDraft] = useState('');
   const [postReportDraft, setPostReportDraft] = useState('');
   const canManageReminderSettings = can('settings.manage') && !!(user?.isTenantAdmin || user?.isSuperAdmin);
+  const leadSingularLower = dictionary.labels.leadSingular.toLowerCase();
+  const intakeBuilderDescription = `Add custom intake fields and manage tenant-specific catalog items for this ${leadSingularLower}.`;
 
   useEffect(() => {
     setLoading(true);
@@ -44,6 +47,7 @@ export function SettingsPage(): React.JSX.Element {
         setTimezoneSearch('');
         setBusinessStartDraft(response.businessStart);
         setBusinessEndDraft(response.businessEnd);
+        setDefaultLeadFollowupDraft(String(response.reminderRules.defaultLeadFollowupMinutes));
         setFirstReminderDraft(String(response.reminderRules.firstReminderMinutes));
         setEscalationDraft(String(response.reminderRules.escalationMinutes));
         setPostReportDraft(String(response.reminderRules.postReportFollowupDays));
@@ -69,12 +73,15 @@ export function SettingsPage(): React.JSX.Element {
       return;
     }
 
+    const defaultLeadFollowupMinutes = Number.parseInt(defaultLeadFollowupDraft, 10);
     const firstReminderMinutes = Number.parseInt(firstReminderDraft, 10);
     const escalationMinutes = Number.parseInt(escalationDraft, 10);
     const postReportFollowupDays = Number.parseInt(postReportDraft, 10);
 
     if (
-      !Number.isFinite(firstReminderMinutes)
+      !Number.isFinite(defaultLeadFollowupMinutes)
+      || defaultLeadFollowupMinutes <= 0
+      || !Number.isFinite(firstReminderMinutes)
       || !Number.isFinite(escalationMinutes)
       || !Number.isFinite(postReportFollowupDays)
     ) {
@@ -106,6 +113,7 @@ export function SettingsPage(): React.JSX.Element {
         businessStart: businessStartDraft,
         businessEnd: businessEndDraft,
         reminderRules: {
+          defaultLeadFollowupMinutes,
           firstReminderMinutes,
           escalationMinutes,
           postReportFollowupDays,
@@ -118,6 +126,7 @@ export function SettingsPage(): React.JSX.Element {
       setTimezoneSearch('');
       setBusinessStartDraft(response.businessStart);
       setBusinessEndDraft(response.businessEnd);
+      setDefaultLeadFollowupDraft(String(response.reminderRules.defaultLeadFollowupMinutes));
       setFirstReminderDraft(String(response.reminderRules.firstReminderMinutes));
       setEscalationDraft(String(response.reminderRules.escalationMinutes));
       setPostReportDraft(String(response.reminderRules.postReportFollowupDays));
@@ -192,11 +201,11 @@ export function SettingsPage(): React.JSX.Element {
         {(user?.isTenantAdmin || user?.isSuperAdmin) && can('settings.view') ? (
           <Card className="rounded-3xl border-white/80 bg-card/95">
             <CardHeader>
-              <CardTitle>Enquiry Builder</CardTitle>
+              <CardTitle>Intake Builder</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               <p className="text-sm text-muted-foreground">
-                Add custom enquiry fields and manage test packages for this tenant.
+                {intakeBuilderDescription}
               </p>
               <Button asChild variant="outline">
                 <Link to="/settings/intake">Open Builder</Link>
@@ -289,7 +298,18 @@ export function SettingsPage(): React.JSX.Element {
                     </div>
                   </div>
 
-                  <div className="grid gap-3 sm:grid-cols-3">
+                  <div className="grid gap-3 sm:grid-cols-4">
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                        Default Next Follow-up (min)
+                      </label>
+                      <Input
+                        type="number"
+                        min={1}
+                        value={defaultLeadFollowupDraft}
+                        onChange={(event) => setDefaultLeadFollowupDraft(event.target.value)}
+                      />
+                    </div>
                     <div className="space-y-1.5">
                       <label className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
                         Initial Reminder (min)
@@ -314,7 +334,7 @@ export function SettingsPage(): React.JSX.Element {
                     </div>
                     <div className="space-y-1.5">
                       <label className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                        Post Report (days)
+                        Continuity Follow-up (days)
                       </label>
                       <Input
                         type="number"
@@ -338,14 +358,19 @@ export function SettingsPage(): React.JSX.Element {
                     <span className="font-semibold">Business window:</span> {settings.businessStart} - {settings.businessEnd}
                   </p>
                   <p>
+                    <span className="font-semibold">Default next follow-up:</span> {profile?.displayConfig.followupRules.defaultLeadFollowupMinutes ?? settings.reminderRules.defaultLeadFollowupMinutes} minutes
+                  </p>
+                  <p>
                     <span className="font-semibold">Initial reminder:</span> {profile?.displayConfig.followupRules.firstReminderMinutes ?? settings.reminderRules.firstReminderMinutes} minutes
                   </p>
                   <p>
                     <span className="font-semibold">Escalation:</span> {profile?.displayConfig.followupRules.escalationMinutes ?? settings.reminderRules.escalationMinutes} minutes
                   </p>
-                  <p>
-                    <span className="font-semibold">Post-report follow-up:</span> {profile?.displayConfig.followupRules.postReportFollowupDays ?? settings.reminderRules.postReportFollowupDays} days
-                  </p>
+                  {dictionary.isDiagnosticsLab ? (
+                    <p>
+                      <span className="font-semibold">Post-{dictionary.labels.reportLabel.toLowerCase()} follow-up:</span> {profile?.displayConfig.followupRules.postReportFollowupDays ?? settings.reminderRules.postReportFollowupDays} days
+                    </p>
+                  ) : null}
                 </>
               )}
             </CardContent>

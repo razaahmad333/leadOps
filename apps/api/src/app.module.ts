@@ -14,9 +14,11 @@ import { MetricsModule } from './common/metrics/metrics.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { EventsModule } from './events/events.module';
 import { FollowUpsModule } from './follow-ups/follow-ups.module';
+import { FaqModule } from './faq/faq.module';
 import { HealthModule } from './health/health.module';
 import { IntegrationsModule } from './integrations/integrations.module';
 import { LeadsModule } from './leads/leads.module';
+import { NotificationsModule } from './notifications/notifications.module';
 import { PermissionsModule } from './permissions/permissions.module';
 import { PlatformAdminModule } from './platform-admin/platform-admin.module';
 import { PrismaModule } from './prisma/prisma.module';
@@ -72,7 +74,9 @@ import { RealtimeModule } from './realtime/realtime.module';
     TenantModule,
     AuthModule,
     LeadsModule,
+    NotificationsModule,
     FollowUpsModule,
+    FaqModule,
     DashboardModule,
     SettingsModule,
     PermissionsModule,

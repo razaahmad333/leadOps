@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import type {
   CustomEnquiryField,
+  OpdDepartment,
+  OpdDoctor,
   TenantIntakeConfig,
   TestPackage,
   UpdateTenantIntakeConfigDto,
@@ -46,6 +48,19 @@ interface TestPackageFormState {
   enabled: boolean;
 }
 
+interface DepartmentFormState {
+  id: string;
+  name: string;
+  isActive: boolean;
+}
+
+interface DoctorFormState {
+  id: string;
+  name: string;
+  departmentIds: string[];
+  enabled: boolean;
+}
+
 const FIELD_TYPES: FieldType[] = ['text', 'email', 'phone', 'select', 'boolean', 'datetime', 'textarea'];
 
 function emptyFieldForm(): FieldFormState {
@@ -64,6 +79,23 @@ function emptyTestPackageForm(): TestPackageFormState {
     id: '',
     name: '',
     description: '',
+    enabled: true,
+  };
+}
+
+function emptyDepartmentForm(): DepartmentFormState {
+  return {
+    id: '',
+    name: '',
+    isActive: true,
+  };
+}
+
+function emptyDoctorForm(): DoctorFormState {
+  return {
+    id: '',
+    name: '',
+    departmentIds: [],
     enabled: true,
   };
 }
@@ -107,15 +139,80 @@ function buildPackageForm(testPackage: TestPackage): TestPackageFormState {
   };
 }
 
+function buildDepartmentForm(department: OpdDepartment): DepartmentFormState {
+  return {
+    id: department.id,
+    name: department.name,
+    isActive: department.isActive,
+  };
+}
+
+function buildDoctorForm(doctor: OpdDoctor): DoctorFormState {
+  return {
+    id: doctor.id,
+    name: doctor.name,
+    departmentIds: doctor.departmentIds,
+    enabled: doctor.enabled,
+  };
+}
+
+function catalogLabels(preset: string): {
+  title: string;
+  singular: string;
+  addAction: string;
+  empty: string;
+  description: string;
+} {
+  if (preset === 'DIAGNOSTICS_LAB') {
+    return {
+      title: 'Test Packages',
+      singular: 'test package',
+      addAction: 'Add Package',
+      empty: 'No test packages configured.',
+      description: 'Add, edit, and enable/disable available tests/packages.',
+    };
+  }
+
+  if (preset === 'DENTAL_CLINIC') {
+    return {
+      title: 'Treatment Catalog',
+      singular: 'treatment item',
+      addAction: 'Add Treatment',
+      empty: 'No treatment items configured.',
+      description: 'Add, edit, and enable/disable available treatment options.',
+    };
+  }
+
+  if (preset === 'DOCTOR_OPD_CLINIC') {
+    return {
+      title: 'Doctor Directory',
+      singular: 'doctor',
+      addAction: 'Add Doctor',
+      empty: 'No doctors configured.',
+      description: 'Add, edit, and enable/disable available doctors for this clinic.',
+    };
+  }
+
+  return {
+    title: 'Service Catalog',
+    singular: 'service item',
+    addAction: 'Add Item',
+    empty: 'No service items configured.',
+    description: 'Add, edit, and enable/disable available service options.',
+  };
+}
+
 export function IntakeConfigPage(): React.JSX.Element {
   const { user } = useAuth();
-  const { refreshTenant } = useTenant();
+  const { dictionary, refreshTenant } = useTenant();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [initialConfig, setInitialConfig] = useState<TenantIntakeConfig | null>(null);
   const [customFields, setCustomFields] = useState<CustomEnquiryField[]>([]);
   const [testPackages, setTestPackages] = useState<TestPackage[]>([]);
+  const [departments, setDepartments] = useState<OpdDepartment[]>([]);
+  const [doctors, setDoctors] = useState<OpdDoctor[]>([]);
 
   const [fieldDialogOpen, setFieldDialogOpen] = useState(false);
   const [editingFieldIndex, setEditingFieldIndex] = useState<number | null>(null);
@@ -124,8 +221,18 @@ export function IntakeConfigPage(): React.JSX.Element {
   const [packageDialogOpen, setPackageDialogOpen] = useState(false);
   const [editingPackageIndex, setEditingPackageIndex] = useState<number | null>(null);
   const [packageForm, setPackageForm] = useState<TestPackageFormState>(emptyTestPackageForm);
+  const [departmentDialogOpen, setDepartmentDialogOpen] = useState(false);
+  const [editingDepartmentIndex, setEditingDepartmentIndex] = useState<number | null>(null);
+  const [departmentForm, setDepartmentForm] = useState<DepartmentFormState>(emptyDepartmentForm);
+  const [doctorDialogOpen, setDoctorDialogOpen] = useState(false);
+  const [editingDoctorIndex, setEditingDoctorIndex] = useState<number | null>(null);
+  const [doctorForm, setDoctorForm] = useState<DoctorFormState>(emptyDoctorForm);
 
   const isTenantAdmin = user?.isTenantAdmin || user?.isSuperAdmin;
+  const leadSingularLower = dictionary.labels.leadSingular.toLowerCase();
+  const intakeConfigTitle = `${dictionary.labels.leadSingular} Configuration`;
+  const catalog = useMemo(() => catalogLabels(dictionary.preset), [dictionary.preset]);
+  const isOpdPreset = dictionary.preset === 'DOCTOR_OPD_CLINIC';
 
   const load = async (): Promise<void> => {
     setLoading(true);
@@ -135,8 +242,10 @@ export function IntakeConfigPage(): React.JSX.Element {
       setInitialConfig(response);
       setCustomFields(response.customEnquiryFields);
       setTestPackages(response.testPackages);
+      setDepartments(response.opdDirectory.departments);
+      setDoctors(response.opdDirectory.doctors);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to load enquiry configuration');
+      toast.error(error instanceof Error ? error.message : 'Failed to load intake configuration');
     } finally {
       setLoading(false);
     }
@@ -159,8 +268,10 @@ export function IntakeConfigPage(): React.JSX.Element {
     return (
       JSON.stringify(initialConfig.customEnquiryFields) !== JSON.stringify(customFields)
       || JSON.stringify(initialConfig.testPackages) !== JSON.stringify(testPackages)
+      || JSON.stringify(initialConfig.opdDirectory.departments) !== JSON.stringify(departments)
+      || JSON.stringify(initialConfig.opdDirectory.doctors) !== JSON.stringify(doctors)
     );
-  }, [customFields, initialConfig, testPackages]);
+  }, [customFields, departments, doctors, initialConfig, testPackages]);
 
   const openCreateField = (): void => {
     setEditingFieldIndex(null);
@@ -244,7 +355,7 @@ export function IntakeConfigPage(): React.JSX.Element {
   const savePackage = (): void => {
     const name = packageForm.name.trim();
     if (name.length < 2) {
-      toast.error('Test package name must be at least 2 characters');
+      toast.error(`${catalog.singular.charAt(0).toUpperCase()}${catalog.singular.slice(1)} name must be at least 2 characters`);
       return;
     }
 
@@ -259,7 +370,7 @@ export function IntakeConfigPage(): React.JSX.Element {
     );
 
     if (duplicateId) {
-      toast.error('Another package already uses this id/name');
+      toast.error(`Another ${catalog.singular} already uses this id/name`);
       return;
     }
 
@@ -295,6 +406,155 @@ export function IntakeConfigPage(): React.JSX.Element {
     );
   };
 
+  const openCreateDepartment = (): void => {
+    setEditingDepartmentIndex(null);
+    setDepartmentForm(emptyDepartmentForm());
+    setDepartmentDialogOpen(true);
+  };
+
+  const openEditDepartment = (index: number): void => {
+    setEditingDepartmentIndex(index);
+    setDepartmentForm(buildDepartmentForm(departments[index]));
+    setDepartmentDialogOpen(true);
+  };
+
+  const saveDepartment = (): void => {
+    const name = departmentForm.name.trim();
+    if (name.length < 2) {
+      toast.error('Department name must be at least 2 characters');
+      return;
+    }
+
+    const id = departmentForm.id.trim() || slugify(name);
+    if (!id) {
+      toast.error('Unable to generate department id');
+      return;
+    }
+
+    const duplicateId = departments.some(
+      (department, index) => department.id === id && index !== editingDepartmentIndex,
+    );
+    if (duplicateId) {
+      toast.error('Another department already uses this id/name');
+      return;
+    }
+
+    const nextDepartment: OpdDepartment = {
+      id,
+      name,
+      isActive: departmentForm.isActive,
+    };
+
+    setDepartments((current) => {
+      if (editingDepartmentIndex === null) {
+        return [...current, nextDepartment];
+      }
+
+      return current.map((department, index) => (index === editingDepartmentIndex ? nextDepartment : department));
+    });
+
+    setDepartmentDialogOpen(false);
+    setDepartmentForm(emptyDepartmentForm());
+    setEditingDepartmentIndex(null);
+  };
+
+  const removeDepartment = (index: number): void => {
+    const departmentId = departments[index]?.id;
+    if (!departmentId) {
+      return;
+    }
+
+    setDepartments((current) => current.filter((_, currentIndex) => currentIndex !== index));
+    setDoctors((current) =>
+      current.map((doctor) => ({
+        ...doctor,
+        departmentIds: doctor.departmentIds.filter((value) => value !== departmentId),
+      })),
+    );
+  };
+
+  const toggleDepartment = (index: number): void => {
+    setDepartments((current) =>
+      current.map((department, currentIndex) =>
+        currentIndex === index
+          ? { ...department, isActive: !department.isActive }
+          : department,
+      ),
+    );
+  };
+
+  const openCreateDoctor = (): void => {
+    setEditingDoctorIndex(null);
+    setDoctorForm(emptyDoctorForm());
+    setDoctorDialogOpen(true);
+  };
+
+  const openEditDoctor = (index: number): void => {
+    setEditingDoctorIndex(index);
+    setDoctorForm(buildDoctorForm(doctors[index]));
+    setDoctorDialogOpen(true);
+  };
+
+  const saveDoctor = (): void => {
+    const name = doctorForm.name.trim();
+    if (name.length < 2) {
+      toast.error('Doctor name must be at least 2 characters');
+      return;
+    }
+
+    const id = doctorForm.id.trim() || slugify(name);
+    if (!id) {
+      toast.error('Unable to generate doctor id');
+      return;
+    }
+
+    const duplicateId = doctors.some(
+      (doctor, index) => doctor.id === id && index !== editingDoctorIndex,
+    );
+    if (duplicateId) {
+      toast.error('Another doctor already uses this id/name');
+      return;
+    }
+
+    if (doctorForm.departmentIds.length === 0) {
+      toast.error('Assign at least one department to this doctor');
+      return;
+    }
+
+    const nextDoctor: OpdDoctor = {
+      id,
+      name,
+      departmentIds: doctorForm.departmentIds,
+      enabled: doctorForm.enabled,
+    };
+
+    setDoctors((current) => {
+      if (editingDoctorIndex === null) {
+        return [...current, nextDoctor];
+      }
+
+      return current.map((doctor, index) => (index === editingDoctorIndex ? nextDoctor : doctor));
+    });
+
+    setDoctorDialogOpen(false);
+    setDoctorForm(emptyDoctorForm());
+    setEditingDoctorIndex(null);
+  };
+
+  const removeDoctor = (index: number): void => {
+    setDoctors((current) => current.filter((_, currentIndex) => currentIndex !== index));
+  };
+
+  const toggleDoctor = (index: number): void => {
+    setDoctors((current) =>
+      current.map((doctor, currentIndex) =>
+        currentIndex === index
+          ? { ...doctor, enabled: !doctor.enabled }
+          : doctor,
+      ),
+    );
+  };
+
   const saveAll = async (): Promise<void> => {
     setSaving(true);
 
@@ -302,16 +562,22 @@ export function IntakeConfigPage(): React.JSX.Element {
       const payload: UpdateTenantIntakeConfigDto = {
         customEnquiryFields: customFields,
         testPackages,
+        opdDirectory: {
+          departments,
+          doctors,
+        },
       };
 
       const response = await api.patch<TenantIntakeConfig>('/v1/settings/intake-config', payload);
       setInitialConfig(response);
       setCustomFields(response.customEnquiryFields);
       setTestPackages(response.testPackages);
+      setDepartments(response.opdDirectory.departments);
+      setDoctors(response.opdDirectory.doctors);
       await refreshTenant();
-      toast.success('Enquiry configuration updated');
+      toast.success('Intake configuration updated');
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to update enquiry configuration');
+      toast.error(error instanceof Error ? error.message : 'Failed to update intake configuration');
     } finally {
       setSaving(false);
     }
@@ -321,8 +587,8 @@ export function IntakeConfigPage(): React.JSX.Element {
     return (
       <Card className="rounded-3xl border-white/80 bg-card/95">
         <CardHeader>
-          <CardTitle>Enquiry Builder</CardTitle>
-          <CardDescription>Only tenant admins can manage enquiry fields and test packages.</CardDescription>
+          <CardTitle>Intake Builder</CardTitle>
+          <CardDescription>Only tenant admins can manage intake fields and catalog items.</CardDescription>
         </CardHeader>
       </Card>
     );
@@ -342,9 +608,9 @@ export function IntakeConfigPage(): React.JSX.Element {
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="space-y-2 pt-2 sm:pt-3">
           <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Tenant Builder</p>
-          <h1 className="text-2xl font-bold">Enquiry Configuration</h1>
+          <h1 className="text-2xl font-bold">{intakeConfigTitle}</h1>
           <p className="text-sm text-muted-foreground">
-            Add custom enquiry fields and manage test/package catalog for this tenant.
+            Add custom intake fields and manage tenant-specific catalog items for this {leadSingularLower}.
           </p>
         </div>
         <Button className="w-full sm:w-auto" disabled={!hasChanges || saving} onClick={() => void saveAll()}>
@@ -352,21 +618,19 @@ export function IntakeConfigPage(): React.JSX.Element {
         </Button>
       </div>
 
-      <div className="grid gap-5 xl:grid-cols-2">
+      <div className={`grid gap-5 ${isOpdPreset ? 'xl:grid-cols-3' : 'xl:grid-cols-2'}`}>
         <Card className="rounded-3xl border-white/80 bg-card/95">
-          <CardHeader className="flex-row items-center justify-between space-y-0">
+          <CardHeader className="space-y-3 pb-2">
             <div>
-              <CardTitle>Custom Enquiry Fields</CardTitle>
-              <CardDescription>These fields are added to enquiry intake forms.</CardDescription>
+              <CardTitle>Custom Intake Fields</CardTitle>
+              <CardDescription className="pt-2">
+                These fields are added to the {leadSingularLower} intake form.
+              </CardDescription>
             </div>
-            <Button variant="outline" size="sm" onClick={openCreateField}>
-              <Plus className="h-4 w-4" />
-              Add Field
-            </Button>
           </CardHeader>
-          <CardContent className="space-y-3">
+          <CardContent className="space-y-4">
             {customFields.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No custom enquiry fields yet.</p>
+              <p className="text-sm text-muted-foreground">No custom intake fields yet.</p>
             ) : (
               customFields.map((field, index) => (
                 <div key={field.key} className="rounded-2xl border border-white/70 bg-background/70 p-4">
@@ -391,45 +655,53 @@ export function IntakeConfigPage(): React.JSX.Element {
                 </div>
               ))
             )}
+            <div className="pt-1">
+              <Button variant="outline" size="sm" onClick={openCreateField}>
+                <Plus className="h-4 w-4" />
+                Add Field
+              </Button>
+            </div>
           </CardContent>
         </Card>
 
         <Card className="rounded-3xl border-white/80 bg-card/95">
-          <CardHeader className="flex-row items-center justify-between space-y-0">
+          <CardHeader className="space-y-3 pb-2">
             <div>
-              <CardTitle>Test Packages</CardTitle>
-              <CardDescription>Add, edit, and enable/disable available tests/packages.</CardDescription>
+              <CardTitle>{isOpdPreset ? 'Departments' : catalog.title}</CardTitle>
+              <CardDescription className="pt-2">
+                {isOpdPreset
+                  ? 'Add, edit, and enable/disable available departments for this clinic.'
+                  : catalog.description}
+              </CardDescription>
             </div>
-            <Button variant="outline" size="sm" onClick={openCreatePackage}>
-              <Plus className="h-4 w-4" />
-              Add Package
-            </Button>
           </CardHeader>
-          <CardContent className="space-y-3">
-            {testPackages.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No test packages configured.</p>
+          <CardContent className="space-y-4">
+            {(isOpdPreset ? departments.length === 0 : testPackages.length === 0) ? (
+              <p className="text-sm text-muted-foreground">{isOpdPreset ? 'No departments configured.' : catalog.empty}</p>
             ) : (
-              testPackages.map((pkg, index) => (
-                <div key={pkg.id} className="rounded-2xl border border-white/70 bg-background/70 p-4">
+              (isOpdPreset ? departments : testPackages).map((item, index) => (
+                <div key={item.id} className="rounded-2xl border border-white/70 bg-background/70 p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="font-semibold">{pkg.name}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">{pkg.description || 'No description'}</p>
+                      <p className="font-semibold">{item.name}</p>
+                      {!isOpdPreset ? (
+                        <p className="mt-1 text-xs text-muted-foreground">{(item as TestPackage).description || 'No description'}</p>
+                      ) : null}
                       <div className="mt-2 flex flex-wrap gap-2">
-                        <Badge variant={pkg.enabled ? 'secondary' : 'outline'}>
-                          {pkg.enabled ? 'Enabled' : 'Disabled'}
+                        <Badge variant={(isOpdPreset ? (item as OpdDepartment).isActive : (item as TestPackage).enabled) ? 'secondary' : 'outline'}>
+                          {(isOpdPreset ? (item as OpdDepartment).isActive : (item as TestPackage).enabled) ? 'Enabled' : 'Disabled'}
                         </Badge>
-                        <Badge variant="outline">{pkg.id}</Badge>
+                        <Badge variant="outline">{item.id}</Badge>
                       </div>
                     </div>
                     <div className="flex gap-2">
-                      <Button variant="outline" size="sm" onClick={() => openEditPackage(index)}>
+                      <Button variant="outline" size="sm" onClick={() => (isOpdPreset ? openEditDepartment(index) : openEditPackage(index))}>
                         <Pencil className="h-4 w-4" />
                       </Button>
-                      <Button variant="secondary" size="sm" onClick={() => togglePackage(index)}>
-                        {pkg.enabled ? 'Disable' : 'Enable'}
+                      <Button variant="secondary" size="sm" onClick={() => (isOpdPreset ? toggleDepartment(index) : togglePackage(index))}>
+                        {(isOpdPreset ? (item as OpdDepartment).isActive : (item as TestPackage).enabled) ? 'Disable' : 'Enable'}
                       </Button>
-                      <Button variant="outline" size="sm" onClick={() => removePackage(index)}>
+                      <Button variant="outline" size="sm" onClick={() => (isOpdPreset ? removeDepartment(index) : removePackage(index))}>
                         <Trash2 className="h-4 w-4" />
                       </Button>
                     </div>
@@ -437,15 +709,77 @@ export function IntakeConfigPage(): React.JSX.Element {
                 </div>
               ))
             )}
+            <div className="pt-1">
+              <Button variant="outline" size="sm" onClick={isOpdPreset ? openCreateDepartment : openCreatePackage}>
+                <Plus className="h-4 w-4" />
+                {isOpdPreset ? 'Add Department' : catalog.addAction}
+              </Button>
+            </div>
           </CardContent>
         </Card>
+
+        {isOpdPreset ? (
+          <Card className="rounded-3xl border-white/80 bg-card/95">
+            <CardHeader className="space-y-3 pb-2">
+              <div>
+                <CardTitle>Doctors</CardTitle>
+                <CardDescription className="pt-2">
+                  Map doctors to one or more departments and control who appears in intake.
+                </CardDescription>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {doctors.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No doctors configured.</p>
+              ) : (
+                doctors.map((doctor, index) => (
+                  <div key={doctor.id} className="rounded-2xl border border-white/70 bg-background/70 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-semibold">{doctor.name}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {(doctor.departmentIds
+                            .map((departmentId) => departments.find((department) => department.id === departmentId)?.name)
+                            .filter(Boolean) as string[]).join(', ') || 'No departments'}
+                        </p>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <Badge variant={doctor.enabled ? 'secondary' : 'outline'}>
+                            {doctor.enabled ? 'Enabled' : 'Disabled'}
+                          </Badge>
+                          <Badge variant="outline">{doctor.id}</Badge>
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button variant="outline" size="sm" onClick={() => openEditDoctor(index)}>
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button variant="secondary" size="sm" onClick={() => toggleDoctor(index)}>
+                          {doctor.enabled ? 'Disable' : 'Enable'}
+                        </Button>
+                        <Button variant="outline" size="sm" onClick={() => removeDoctor(index)}>
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+              <div className="pt-1">
+                <Button variant="outline" size="sm" onClick={openCreateDoctor}>
+                  <Plus className="h-4 w-4" />
+                  Add Doctor
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        ) : null}
       </div>
 
       <Dialog open={fieldDialogOpen} onOpenChange={setFieldDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{editingFieldIndex === null ? 'Add Enquiry Field' : 'Edit Enquiry Field'}</DialogTitle>
-            <DialogDescription>Define an extra field for enquiry capture.</DialogDescription>
+            <DialogTitle>{editingFieldIndex === null ? 'Add Intake Field' : 'Edit Intake Field'}</DialogTitle>
+            <DialogDescription>Define an extra field for intake capture.</DialogDescription>
           </DialogHeader>
 
           <div className="grid gap-4 md:grid-cols-2">
@@ -535,20 +869,24 @@ export function IntakeConfigPage(): React.JSX.Element {
       <Dialog open={packageDialogOpen} onOpenChange={setPackageDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{editingPackageIndex === null ? 'Add Test Package' : 'Edit Test Package'}</DialogTitle>
-            <DialogDescription>Define package name, description, and active status.</DialogDescription>
+            <DialogTitle>
+              {editingPackageIndex === null
+                ? `Add ${catalog.singular.charAt(0).toUpperCase()}${catalog.singular.slice(1)}`
+                : `Edit ${catalog.singular.charAt(0).toUpperCase()}${catalog.singular.slice(1)}`}
+            </DialogTitle>
+            <DialogDescription>Define name, description, and active status.</DialogDescription>
           </DialogHeader>
 
           <div className="grid gap-4">
             <div className="space-y-2">
-              <Label htmlFor="test-package-name">Package Name</Label>
+              <Label htmlFor="test-package-name">Name</Label>
               <Input
                 id="test-package-name"
                 value={packageForm.name}
                 onChange={(event) =>
                   setPackageForm((current) => ({ ...current, name: event.target.value }))
                 }
-                placeholder="Diabetes Package"
+                placeholder="Name"
               />
             </div>
 
@@ -581,7 +919,127 @@ export function IntakeConfigPage(): React.JSX.Element {
               Cancel
             </Button>
             <Button onClick={savePackage}>
-              Save Package
+              Save Item
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={departmentDialogOpen} onOpenChange={setDepartmentDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{editingDepartmentIndex === null ? 'Add Department' : 'Edit Department'}</DialogTitle>
+            <DialogDescription>
+              Departments control which specialities appear in OPD intake and how doctors are grouped.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="department-name">Department Name</Label>
+              <Input
+                id="department-name"
+                value={departmentForm.name}
+                onChange={(event) =>
+                  setDepartmentForm((current) => ({ ...current, name: event.target.value }))
+                }
+                placeholder="Cardiology"
+              />
+            </div>
+
+            <Checkbox
+              checked={departmentForm.isActive}
+              label="Enabled"
+              onChange={(event) =>
+                setDepartmentForm((current) => ({
+                  ...current,
+                  isActive: event.target.checked,
+                }))
+              }
+            />
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDepartmentDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={saveDepartment}>
+              Save Department
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={doctorDialogOpen} onOpenChange={setDoctorDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{editingDoctorIndex === null ? 'Add Doctor' : 'Edit Doctor'}</DialogTitle>
+            <DialogDescription>
+              Assign each doctor to one or more departments. Only enabled doctors should appear in intake.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="doctor-name">Doctor Name</Label>
+              <Input
+                id="doctor-name"
+                value={doctorForm.name}
+                onChange={(event) =>
+                  setDoctorForm((current) => ({ ...current, name: event.target.value }))
+                }
+                placeholder="Dr. Mehta"
+              />
+            </div>
+
+            <div className="space-y-3">
+              <Label>Departments</Label>
+              {departments.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Create at least one department before adding doctors.</p>
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {departments.map((department) => (
+                    <div key={department.id} className="rounded-xl border bg-background/70 p-3">
+                      <Checkbox
+                        checked={doctorForm.departmentIds.includes(department.id)}
+                        disabled={!department.isActive}
+                        label={department.name}
+                        onChange={(event) =>
+                          setDoctorForm((current) => ({
+                            ...current,
+                            departmentIds: event.target.checked
+                              ? [...current.departmentIds, department.id]
+                              : current.departmentIds.filter((departmentId) => departmentId !== department.id),
+                          }))
+                        }
+                      />
+                      {!department.isActive ? (
+                        <p className="mt-2 text-xs text-muted-foreground">Enable this department to assign doctors to it.</p>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <Checkbox
+              checked={doctorForm.enabled}
+              label="Enabled"
+              onChange={(event) =>
+                setDoctorForm((current) => ({
+                  ...current,
+                  enabled: event.target.checked,
+                }))
+              }
+            />
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDoctorDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={saveDoctor} disabled={departments.length === 0}>
+              Save Doctor
             </Button>
           </DialogFooter>
         </DialogContent>

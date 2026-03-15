@@ -14,6 +14,7 @@ export const CreateFollowUpSchema = z.object({
   leadId: z.string().uuid('leadId must be a valid UUID'),
   scheduledAt: DateFromInput,
   assignedTo: z.string().uuid().optional(),
+  purposeKey: z.string().trim().min(1).max(80),
   note: z.string().trim().max(1000).optional(),
 }).strict();
 
@@ -24,10 +25,13 @@ export const FollowUpSchema = z.object({
   tenantId: z.string(),
   leadId: z.string(),
   kind: z.string(),
+  purposeKey: z.string().nullable(),
+  purposeLabel: z.string().nullable(),
   scheduledAt: z.coerce.date(),
   note: z.string().nullable(),
   done: z.boolean(),
   escalatedAt: z.coerce.date().nullable(),
+  secondEscalatedAt: z.coerce.date().nullable(),
   createdAt: z.coerce.date(),
   updatedAt: z.coerce.date(),
 });
@@ -58,27 +62,7 @@ const OptionalTrimmedString = z.preprocess((value) => {
   return normalized.length > 0 ? normalized : undefined;
 }, z.string().optional());
 
-const BooleanFromQuery = z.preprocess((value) => {
-  if (typeof value === 'boolean') {
-    return value;
-  }
-
-  if (typeof value === 'string') {
-    const normalized = value.trim().toLowerCase();
-    if (normalized === 'true' || normalized === '1' || normalized === 'yes' || normalized === 'on') {
-      return true;
-    }
-    if (normalized === 'false' || normalized === '0' || normalized === 'no' || normalized === 'off' || normalized === '') {
-      return false;
-    }
-  }
-
-  if (typeof value === 'number') {
-    return value === 1;
-  }
-
-  return value;
-}, z.boolean());
+export const DueQueueStatusSchema = z.enum(['all', 'due_today', 'overdue', 'escalated']);
 
 export const ListTodayFollowUpsQuerySchema = z.object({
   search: OptionalTrimmedString,
@@ -90,7 +74,7 @@ export const ListTodayFollowUpsQuerySchema = z.object({
     const normalized = value.trim();
     return normalized.length > 0 ? normalized : undefined;
   }, z.string().uuid().optional()),
-  includeOverdue: BooleanFromQuery.default(false),
+  status: DueQueueStatusSchema.default('all'),
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
 }).strict();
@@ -105,5 +89,6 @@ export const TodayFollowUpListResponseSchema = z.object({
 
 export type FollowUp = z.infer<typeof FollowUpSchema>;
 export type TodayFollowUp = z.infer<typeof TodayFollowUpSchema>;
+export type DueQueueStatus = z.infer<typeof DueQueueStatusSchema>;
 export type ListTodayFollowUpsQueryDto = z.infer<typeof ListTodayFollowUpsQuerySchema>;
 export type TodayFollowUpListResponse = z.infer<typeof TodayFollowUpListResponseSchema>;

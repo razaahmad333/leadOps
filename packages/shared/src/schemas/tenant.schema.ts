@@ -77,12 +77,46 @@ export const TestPackageSchema = z.object({
 
 export type TestPackage = z.infer<typeof TestPackageSchema>;
 
+export const OpdDepartmentSchema = z.object({
+  id: z.string(),
+  name: z.string().min(1).max(120),
+  isActive: z.boolean().default(true),
+}).strict();
+
+export type OpdDepartment = z.infer<typeof OpdDepartmentSchema>;
+
+export const OpdDoctorSchema = z.object({
+  id: z.string(),
+  name: z.string().min(1).max(120),
+  departmentIds: z.array(z.string()).default([]),
+  enabled: z.boolean().default(true),
+}).strict();
+
+export type OpdDoctor = z.infer<typeof OpdDoctorSchema>;
+
+export const OpdDirectorySchema = z.object({
+  departments: z.array(OpdDepartmentSchema).default([]),
+  doctors: z.array(OpdDoctorSchema).default([]),
+}).strict();
+
+export type OpdDirectory = z.infer<typeof OpdDirectorySchema>;
+
+export const FollowupPurposeOptionSchema = z.object({
+  key: z.string().min(1).max(80),
+  label: z.string().min(1).max(120),
+}).strict();
+
+export type FollowupPurposeOption = z.infer<typeof FollowupPurposeOptionSchema>;
+
 export const PipelineStageSchema = z.object({
   key: z.string(),
   label: z.string(),
   internalStatus: z.nativeEnum(LeadStatus),
   milestone: z.nativeEnum(MilestoneKey).optional(),
   allowedNext: z.array(z.string()).default([]),
+  followupPurposes: z.array(FollowupPurposeOptionSchema).min(1),
+  defaultFollowupPurposeKey: z.string().min(1).max(80),
+  followupGuidance: z.string().max(400).optional(),
   terminal: z.boolean().default(false),
   order: z.number().int().nonnegative().default(0),
 });
@@ -90,6 +124,7 @@ export const PipelineStageSchema = z.object({
 export type PipelineStage = z.infer<typeof PipelineStageSchema>;
 
 export const FollowupRulesSchema = z.object({
+  defaultLeadFollowupMinutes: z.number().int().positive().default(120),
   firstReminderMinutes: z.number().int().nonnegative(),
   escalationMinutes: z.number().int().nonnegative(),
   postReportFollowupDays: z.number().int().positive().default(3),
@@ -139,6 +174,7 @@ export const TenantDisplayConfigSchema = z.object({
   featureFlags: z.record(z.boolean()).default({}),
   customEnquiryFields: z.array(CustomEnquiryFieldSchema).default([]),
   testPackages: z.array(TestPackageSchema).default([]),
+  opdDirectory: OpdDirectorySchema.optional(),
 });
 
 export type TenantDisplayConfig = z.infer<typeof TenantDisplayConfigSchema>;

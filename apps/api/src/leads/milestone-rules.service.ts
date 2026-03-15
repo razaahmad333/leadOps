@@ -39,6 +39,13 @@ export class MilestoneRulesService {
 
   private async handleReportDelivered(input: MilestoneRuleInput): Promise<void> {
     const rules = await this.tenantConfig.getFollowupRules(input.tenantId);
+    const purpose = await this.tenantConfig.resolveFollowupPurpose({
+      stageKey: 'REPORT_DELIVERED',
+      purposeKey: 'post_report_checkin',
+      tenantId: input.tenantId,
+      fallbackKey: 'post_report_checkin',
+      fallbackLabel: 'Post-Report Check-In',
+    });
 
     const dueAt = await this.tenantConfig.normalizeToBusinessWindow(
       new Date(Date.now() + rules.postReportFollowupDays * 24 * 60 * 60 * 1000),
@@ -51,6 +58,8 @@ export class MilestoneRulesService {
         leadId: input.leadId,
         scheduledAt: dueAt,
         kind: 'POST_REPORT',
+        purposeKey: purpose.key,
+        purposeLabelSnapshot: purpose.label,
         note: rules.postReportFollowupNote,
       },
     });
@@ -72,7 +81,7 @@ export class MilestoneRulesService {
       },
     });
 
-    await this.queue.scheduleFollowupReminder(
+    await this.queue.scheduleFollowupNotifications(
       {
         tenantId: input.tenantId,
         followUpId: followUp.id,

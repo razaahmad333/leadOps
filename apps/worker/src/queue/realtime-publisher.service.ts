@@ -1,8 +1,10 @@
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
+  type Notification,
   REALTIME_REDIS_CHANNEL,
   RealtimeInvalidationEvent,
+  type RealtimePubsubMessage,
 } from '@leadops/shared';
 import Redis from 'ioredis';
 
@@ -26,12 +28,20 @@ export class WorkerRealtimePublisherService implements OnModuleDestroy {
     });
   }
 
-  async publish(event: RealtimeInvalidationEvent): Promise<void> {
+  async publishInvalidation(event: RealtimeInvalidationEvent): Promise<void> {
+    await this.publish(event);
+  }
+
+  async publishNotification(notification: Notification): Promise<void> {
+    await this.publish(notification);
+  }
+
+  private async publish(message: RealtimePubsubMessage): Promise<void> {
     try {
-      await this.publisher.publish(REALTIME_REDIS_CHANNEL, JSON.stringify(event));
+      await this.publisher.publish(REALTIME_REDIS_CHANNEL, JSON.stringify(message));
     } catch (error) {
       this.logger.warn(
-        `Failed to publish realtime event (${event.event}): ${error instanceof Error ? error.message : 'Unknown error'}`,
+        `Failed to publish realtime event: ${error instanceof Error ? error.message : 'Unknown error'}`,
       );
     }
   }

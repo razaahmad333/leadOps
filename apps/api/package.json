@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit",
     "test": "jest --passWithNoTests",
     "test:watch": "jest --watch",
+    "perf:followups": "ts-node --project scripts/tsconfig.scripts.json scripts/followup-query-baseline.ts",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:seed": "ts-node --project prisma/tsconfig.seed.json -r tsconfig-paths/register prisma/seed.ts",

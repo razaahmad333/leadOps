@@ -25,6 +25,7 @@ import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
+import { RefreshButton } from '../components/ui/refresh-button';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '../components/ui/sheet';
 import { Skeleton } from '../components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
@@ -82,9 +83,9 @@ function normalizeFieldValue(field: LeadFieldConfig, value: FormValue | undefine
   return typeof value === 'string' ? value : '';
 }
 
-function buildInitialForm(fields: LeadFieldConfig[]): FormState {
+function buildInitialForm(fields: LeadFieldConfig[], defaultLeadFollowupMinutes: number): FormState {
   const state: FormState = {};
-  const defaultFollowup = toDateTimeLocal(new Date(Date.now() + 2 * 60 * 60 * 1000));
+  const defaultFollowup = toDateTimeLocal(new Date(Date.now() + defaultLeadFollowupMinutes * 60 * 1000));
 
   fields.forEach((field) => {
     if (field.type === 'boolean') {
@@ -123,6 +124,39 @@ function inferStageKey(lead: Lead, stages: PipelineStage[]): string {
 
 function stageLabel(stageKey: string, stages: PipelineStage[]): string {
   return stages.find((stage) => stage.key === stageKey)?.label ?? stageKey;
+}
+
+function stagePurposeOptions(stageKey: string, stages: PipelineStage[]) {
+  return stages.find((stage) => stage.key === stageKey)?.followupPurposes ?? [];
+}
+
+function defaultStagePurposeKey(stageKey: string, stages: PipelineStage[]): string {
+  const stage = stages.find((item) => item.key === stageKey);
+  return stage?.defaultFollowupPurposeKey ?? stage?.followupPurposes[0]?.key ?? 'general_followup';
+}
+
+function stageFollowupGuidance(stageKey: string, stages: PipelineStage[]): string | null {
+  return stages.find((stage) => stage.key === stageKey)?.followupGuidance ?? null;
+}
+
+function followupPurposeLabel(
+  followUp: { purposeKey: string | null; purposeLabel: string | null },
+  stages: PipelineStage[],
+): string {
+  if (followUp.purposeLabel) {
+    return followUp.purposeLabel;
+  }
+
+  if (followUp.purposeKey) {
+    for (const stage of stages) {
+      const purpose = stage.followupPurposes.find((item) => item.key === followUp.purposeKey);
+      if (purpose) {
+        return purpose.label;
+      }
+    }
+  }
+
+  return 'General Follow-up';
 }
 
 function statusLabel(lead: Lead, stages: PipelineStage[], labels: Record<string, string>): string {
@@ -167,6 +201,8 @@ function renderField(
   field: LeadFieldConfig,
   value: FormValue | undefined,
   onChange: (next: FormValue) => void,
+  optionsOverride?: string[],
+  disabled?: boolean,
 ): React.JSX.Element {
   const id = `create-${field.key}`;
   const label = `${field.label}${field.required ? ' *' : ''}`;
@@ -199,9 +235,10 @@ function renderField(
           onChange={(event) => onChange(event.target.value)}
           className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
           required={field.required}
+          disabled={disabled}
         >
           <option value="">Select {field.label.toLowerCase()}</option>
-          {(field.options ?? []).map((option) => (
+          {(optionsOverride ?? field.options ?? []).map((option) => (
             <option key={option} value={option}>
               {option}
             </option>
@@ -260,6 +297,8 @@ export function LeadsPage(): React.JSX.Element {
   const debouncedQuery = useDebouncedValue(query.trim(), 350);
   const [stageFilter, setStageFilter] = useState<string>('ALL');
   const [branchFilter, setBranchFilter] = useState<string>('ALL');
+  const [createdFrom, setCreatedFrom] = useState('');
+  const [createdTo, setCreatedTo] = useState('');
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
@@ -272,10 +311,12 @@ export function LeadsPage(): React.JSX.Element {
   const [creating, setCreating] = useState(false);
   const [createForm, setCreateForm] = useState<FormState>({});
   const [createStageKey, setCreateStageKey] = useState<string>('');
+  const [createPurposeKey, setCreatePurposeKey] = useState<string>('');
   const [createBranchId, setCreateBranchId] = useState<string>('');
 
   const [stageDraft, setStageDraft] = useState<string>('');
   const [followupDraft, setFollowupDraft] = useState('');
+  const [followupPurposeDraft, setFollowupPurposeDraft] = useState('');
   const [noteDraft, setNoteDraft] = useState('');
   const [realtimeLeadsVersion, setRealtimeLeadsVersion] = useState(0);
   const [realtimeDetailVersion, setRealtimeDetailVersion] = useState(0);
@@ -296,6 +337,11 @@ export function LeadsPage(): React.JSX.Element {
     () => dictionary.leadFields.filter((field) => field.section === 'intake'),
     [dictionary.leadFields],
   );
+  const intakeSummaryFields = useMemo(
+    () => intakeFields.slice(0, 3),
+    [intakeFields],
+  );
+  const defaultLeadFollowupMinutes = profile?.displayConfig.followupRules.defaultLeadFollowupMinutes ?? 120;
   const accessibleBranches = useMemo<Branch[]>(() => buildAccessibleBranches(user), [user]);
   const branchNameById = useMemo(() => {
     return new Map(accessibleBranches.map((branch) => [branch.id, branch.name]));
@@ -305,6 +351,36 @@ export function LeadsPage(): React.JSX.Element {
     [accessibleBranches],
   );
   const canChooseBranch = accessibleBranches.length > 1;
+  const opdDirectory = profile?.displayConfig.opdDirectory;
+  const activeOpdDepartments = useMemo(
+    () => (opdDirectory?.departments ?? []).filter((department) => department.isActive),
+    [opdDirectory?.departments],
+  );
+  const enabledOpdDoctors = useMemo(
+    () => (opdDirectory?.doctors ?? []).filter((doctor) => doctor.enabled),
+    [opdDirectory?.doctors],
+  );
+  const selectedDepartmentName = useMemo(() => {
+    const value = createForm.departmentOrSpeciality;
+    return typeof value === 'string' ? value.trim() : '';
+  }, [createForm.departmentOrSpeciality]);
+  const selectedDepartmentId = useMemo(
+    () => activeOpdDepartments.find((department) => department.name === selectedDepartmentName)?.id ?? null,
+    [activeOpdDepartments, selectedDepartmentName],
+  );
+  const opdDepartmentOptions = useMemo(
+    () => activeOpdDepartments.map((department) => department.name),
+    [activeOpdDepartments],
+  );
+  const opdDoctorOptions = useMemo(() => {
+    if (!selectedDepartmentId) {
+      return [];
+    }
+
+    return enabledOpdDoctors
+      .filter((doctor) => doctor.departmentIds.includes(selectedDepartmentId))
+      .map((doctor) => doctor.name);
+  }, [enabledOpdDoctors, selectedDepartmentId]);
 
   const loadLeads = useCallback((): void => {
     setLoading(true);
@@ -319,6 +395,14 @@ export function LeadsPage(): React.JSX.Element {
 
     if (stageFilter !== 'ALL') {
       params.set('stageKey', stageFilter);
+    }
+
+    if (createdFrom) {
+      params.set('createdFrom', new Date(`${createdFrom}T00:00:00`).toISOString());
+    }
+
+    if (createdTo) {
+      params.set('createdTo', new Date(`${createdTo}T23:59:59.999`).toISOString());
     }
 
     if (canChooseBranch && branchFilter !== 'ALL') {
@@ -353,6 +437,8 @@ export function LeadsPage(): React.JSX.Element {
     profile?.tenantId,
     selectedBranchId,
     stageFilter,
+    createdFrom,
+    createdTo,
   ]);
 
   const loadLeadDetail = (id: string): void => {
@@ -362,8 +448,14 @@ export function LeadsPage(): React.JSX.Element {
       .then((detail) => {
         setSelectedLeadDetail(detail);
         const inferred = inferStageKey(detail.lead, sortedStages);
+        const pendingGeneralFollowUp = detail.followUps.find((followUp) => !followUp.done && followUp.kind === 'GENERAL')
+          ?? detail.followUps.find((followUp) => !followUp.done)
+          ?? null;
         setStageDraft(inferred);
         setFollowupDraft(toDateTimeLocal(detail.lead.nextFollowUpAt));
+        setFollowupPurposeDraft(
+          pendingGeneralFollowUp?.purposeKey ?? defaultStagePurposeKey(inferred, sortedStages),
+        );
       })
       .catch((error) => {
         toast.error(error instanceof Error ? error.message : `Failed to load ${dictionary.labels.leadSingular.toLowerCase()} detail`);
@@ -372,9 +464,11 @@ export function LeadsPage(): React.JSX.Element {
   };
 
   useEffect(() => {
-    setCreateForm(buildInitialForm(dictionary.leadFields));
-    setCreateStageKey(sortedStages[0]?.key ?? '');
-  }, [dictionary.leadFields, sortedStages]);
+    setCreateForm(buildInitialForm(dictionary.leadFields, defaultLeadFollowupMinutes));
+    const defaultStageKey = sortedStages[0]?.key ?? '';
+    setCreateStageKey(defaultStageKey);
+    setCreatePurposeKey(defaultStagePurposeKey(defaultStageKey, sortedStages));
+  }, [defaultLeadFollowupMinutes, dictionary.leadFields, sortedStages]);
 
   useEffect(() => {
     setCreateBranchId((current) => {
@@ -395,7 +489,7 @@ export function LeadsPage(): React.JSX.Element {
 
   useEffect(() => {
     setPage(1);
-  }, [branchFilter, debouncedQuery, profile?.tenantId, selectedBranchId, stageFilter]);
+  }, [branchFilter, debouncedQuery, profile?.tenantId, selectedBranchId, stageFilter, createdFrom, createdTo]);
 
   useEffect(() => {
     loadLeads();
@@ -505,6 +599,11 @@ export function LeadsPage(): React.JSX.Element {
       return;
     }
 
+    if (!createPurposeKey) {
+      toast.error('Follow-up purpose is required');
+      return;
+    }
+
     const intakeData: Record<string, string | boolean> = {};
 
     dictionary.leadFields.forEach((field) => {
@@ -544,6 +643,7 @@ export function LeadsPage(): React.JSX.Element {
         name,
         stageKey: createStageKey || undefined,
         branchId: createBranchId || undefined,
+        followUpPurposeKey: createPurposeKey,
         nextFollowUpAt: nextFollowUpAtIso,
         email: String(createForm.email ?? '').trim() || undefined,
         phone: String(createForm.phone ?? '').trim() || undefined,
@@ -554,8 +654,9 @@ export function LeadsPage(): React.JSX.Element {
 
       toast.success(`${dictionary.labels.leadSingular} created`);
       setFormOpen(false);
-      setCreateForm(buildInitialForm(dictionary.leadFields));
+      setCreateForm(buildInitialForm(dictionary.leadFields, defaultLeadFollowupMinutes));
       setCreateStageKey(sortedStages[0]?.key ?? '');
+      setCreatePurposeKey(defaultStagePurposeKey(sortedStages[0]?.key ?? '', sortedStages));
       loadLeads();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : `Failed to create ${dictionary.labels.leadSingular.toLowerCase()}`);
@@ -571,9 +672,14 @@ export function LeadsPage(): React.JSX.Element {
 
     try {
       const nextFollowUpAtIso = followupDraft ? toIsoFromDateTimeLocal(followupDraft) : null;
+      if (!followupPurposeDraft) {
+        toast.error('Follow-up purpose is required');
+        return;
+      }
       await api.patch(`/v1/leads/${selectedLeadDetail.lead.id}/status`, {
         stageKey: stageDraft,
         nextFollowUpAt: nextFollowUpAtIso ?? undefined,
+        followUpPurposeKey: followupPurposeDraft,
       });
 
       toast.success(`${dictionary.labels.stageLabel} updated`);
@@ -602,6 +708,46 @@ export function LeadsPage(): React.JSX.Element {
   const leadSingularLower = dictionary.labels.leadSingular.toLowerCase();
   const leadPluralLower = dictionary.labels.leadPlural.toLowerCase();
 
+  const downloadLeads = async (): Promise<void> => {
+    try {
+      const params = new URLSearchParams();
+
+      if (debouncedQuery) {
+        params.set('search', debouncedQuery);
+      }
+
+      if (stageFilter !== 'ALL') {
+        params.set('stageKey', stageFilter);
+      }
+
+      if (createdFrom) {
+        params.set('createdFrom', new Date(`${createdFrom}T00:00:00`).toISOString());
+      }
+
+      if (createdTo) {
+        params.set('createdTo', new Date(`${createdTo}T23:59:59.999`).toISOString());
+      }
+
+      if (canChooseBranch && branchFilter !== 'ALL') {
+        params.set('branchId', branchFilter);
+      }
+
+      const response = await api.download(`/v1/leads/export?${params.toString()}`);
+      const blob = await response.blob();
+      const objectUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = `leads-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(objectUrl);
+      toast.success(`${dictionary.labels.leadPlural} export downloaded`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : `Failed to export ${leadPluralLower}`);
+    }
+  };
+
   return (
     <div className="space-y-5">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
@@ -613,10 +759,13 @@ export function LeadsPage(): React.JSX.Element {
           </p>
         </div>
 
-        <Button data-tour-id="leads-create-button" onClick={() => setFormOpen((open) => !open)} className="w-full sm:w-auto">
-          <Plus className="h-4 w-4" />
-          {formOpen ? 'Close form' : `New ${leadSingularLower}`}
-        </Button>
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+          <RefreshButton loading={loading} onClick={loadLeads} className="w-full sm:w-auto" />
+          <Button data-tour-id="leads-create-button" onClick={() => setFormOpen((open) => !open)} className="w-full sm:w-auto">
+            <Plus className="h-4 w-4" />
+            {formOpen ? 'Close form' : `New ${leadSingularLower}`}
+          </Button>
+        </div>
       </div>
 
       {formOpen ? (
@@ -632,7 +781,11 @@ export function LeadsPage(): React.JSX.Element {
                   <select
                     id="create-stage"
                     value={createStageKey}
-                    onChange={(event) => setCreateStageKey(event.target.value)}
+                    onChange={(event) => {
+                      const nextStageKey = event.target.value;
+                      setCreateStageKey(nextStageKey);
+                      setCreatePurposeKey(defaultStagePurposeKey(nextStageKey, sortedStages));
+                    }}
                     className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                   >
                     {sortedStages.map((stage) => (
@@ -663,6 +816,30 @@ export function LeadsPage(): React.JSX.Element {
               </div>
 
               <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="create-purpose">Follow-up purpose</Label>
+                  <select
+                    id="create-purpose"
+                    value={createPurposeKey}
+                    onChange={(event) => setCreatePurposeKey(event.target.value)}
+                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  >
+                    {stagePurposeOptions(createStageKey, sortedStages).map((purpose) => (
+                      <option key={purpose.key} value={purpose.key}>
+                        {purpose.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="rounded-2xl border border-white/70 bg-background/70 p-3 text-sm text-muted-foreground">
+                  <p className="font-medium text-foreground">Purpose guidance</p>
+                  <p className="mt-1">
+                    {stageFollowupGuidance(createStageKey, sortedStages) ?? 'Choose the business reason for this follow-up.'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
                 {coreFields.map((field) =>
                   renderField(field, createForm[field.key], (next) => {
                     setCreateForm((prev) => ({ ...prev, [field.key]: next }));
@@ -677,11 +854,34 @@ export function LeadsPage(): React.JSX.Element {
                     <p className="text-xs text-muted-foreground">Fields are configured per tenant workflow.</p>
                   </div>
                   <div className="grid gap-4 sm:grid-cols-2">
-                    {intakeFields.map((field) =>
-                      renderField(field, createForm[field.key], (next) => {
-                        setCreateForm((prev) => ({ ...prev, [field.key]: next }));
-                      }),
-                    )}
+                    {intakeFields.map((field) => {
+                      const optionsOverride =
+                        dictionary.preset === 'DOCTOR_OPD_CLINIC' && field.key === 'departmentOrSpeciality'
+                          ? opdDepartmentOptions
+                          : dictionary.preset === 'DOCTOR_OPD_CLINIC' && field.key === 'preferredDoctor'
+                            ? opdDoctorOptions
+                            : undefined;
+                      const disabled =
+                        dictionary.preset === 'DOCTOR_OPD_CLINIC' && field.key === 'preferredDoctor'
+                          ? !selectedDepartmentId || opdDoctorOptions.length === 0
+                          : false;
+
+                      return renderField(
+                        field,
+                        createForm[field.key],
+                        (next) => {
+                          setCreateForm((prev) => {
+                            const nextState = { ...prev, [field.key]: next };
+                            if (dictionary.preset === 'DOCTOR_OPD_CLINIC' && field.key === 'departmentOrSpeciality') {
+                              nextState.preferredDoctor = '';
+                            }
+                            return nextState;
+                          });
+                        },
+                        optionsOverride,
+                        disabled,
+                      );
+                    })}
                   </div>
                 </div>
               ) : null}
@@ -735,6 +935,21 @@ export function LeadsPage(): React.JSX.Element {
                 ))}
               </select>
             ) : null}
+            <Input
+              type="date"
+              value={createdFrom}
+              onChange={(event) => setCreatedFrom(event.target.value)}
+              className="h-10 w-full lg:w-auto"
+            />
+            <Input
+              type="date"
+              value={createdTo}
+              onChange={(event) => setCreatedTo(event.target.value)}
+              className="h-10 w-full lg:w-auto"
+            />
+            <Button variant="outline" onClick={() => void downloadLeads()} className="w-full lg:w-auto">
+              Download CSV
+            </Button>
           </div>
 
           {loading ? (
@@ -779,9 +994,10 @@ export function LeadsPage(): React.JSX.Element {
                         <span className="font-medium text-foreground">{dictionary.labels.followupLabel}:</span>{' '}
                         {lead.nextFollowUpAt ? new Date(lead.nextFollowUpAt).toLocaleString() : 'N/A'}
                       </p>
-                      {dictionary.isDiagnosticsLab ? (
+                      {intakeSummaryFields[0] ? (
                         <p>
-                          <span className="font-medium text-foreground">Test:</span> {intakeValue(lead, 'testOrPackage')}
+                          <span className="font-medium text-foreground">{intakeSummaryFields[0].label}:</span>{' '}
+                          {intakeValue(lead, intakeSummaryFields[0].key)}
                         </p>
                       ) : null}
                     </div>
@@ -798,9 +1014,9 @@ export function LeadsPage(): React.JSX.Element {
                       <TableHead>{dictionary.labels.stageLabel}</TableHead>
                       <TableHead>{dictionary.labels.followupLabel}</TableHead>
                       <TableHead>Contact</TableHead>
-                      {dictionary.isDiagnosticsLab ? <TableHead>Test / Package</TableHead> : null}
-                      {dictionary.isDiagnosticsLab ? <TableHead>Home Collection</TableHead> : null}
-                      {dictionary.isDiagnosticsLab ? <TableHead>Preferred Slot</TableHead> : null}
+                      {intakeSummaryFields.map((field) => (
+                        <TableHead key={field.key}>{field.label}</TableHead>
+                      ))}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -824,9 +1040,9 @@ export function LeadsPage(): React.JSX.Element {
                           <div>{lead.email ?? 'No email'}</div>
                           <div className="text-xs text-muted-foreground">{lead.phone ?? 'No phone'}</div>
                         </TableCell>
-                        {dictionary.isDiagnosticsLab ? <TableCell>{intakeValue(lead, 'testOrPackage')}</TableCell> : null}
-                        {dictionary.isDiagnosticsLab ? <TableCell>{intakeValue(lead, 'homeCollection')}</TableCell> : null}
-                        {dictionary.isDiagnosticsLab ? <TableCell>{intakeValue(lead, 'preferredSlot')}</TableCell> : null}
+                        {intakeSummaryFields.map((field) => (
+                          <TableCell key={field.key}>{intakeValue(lead, field.key)}</TableCell>
+                        ))}
                       </TableRow>
                     ))}
                   </TableBody>
@@ -888,7 +1104,11 @@ export function LeadsPage(): React.JSX.Element {
                 <CardContent className="space-y-3">
                   <select
                     value={stageDraft || inferStageKey(selectedLeadDetail.lead, sortedStages)}
-                    onChange={(event) => setStageDraft(event.target.value)}
+                    onChange={(event) => {
+                      const nextStageKey = event.target.value;
+                      setStageDraft(nextStageKey);
+                      setFollowupPurposeDraft(defaultStagePurposeKey(nextStageKey, sortedStages));
+                    }}
                     className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                   >
                     {sortedStages.map((stage) => (
@@ -908,16 +1128,36 @@ export function LeadsPage(): React.JSX.Element {
                     />
                   </div>
 
+                  <div className="space-y-2">
+                    <Label htmlFor="next-followup-purpose">Follow-up purpose</Label>
+                    <select
+                      id="next-followup-purpose"
+                      value={followupPurposeDraft}
+                      onChange={(event) => setFollowupPurposeDraft(event.target.value)}
+                      className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                    >
+                      {stagePurposeOptions(stageDraft || inferStageKey(selectedLeadDetail.lead, sortedStages), sortedStages).map((purpose) => (
+                        <option key={purpose.key} value={purpose.key}>
+                          {purpose.label}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-xs text-muted-foreground">
+                      {stageFollowupGuidance(stageDraft || inferStageKey(selectedLeadDetail.lead, sortedStages), sortedStages)
+                        ?? 'Choose the business reason for the next follow-up.'}
+                    </p>
+                  </div>
+
                   <Button onClick={() => void updateStatus()} className="w-full">
                     Save stage
                   </Button>
                 </CardContent>
               </Card>
 
-              {dictionary.isDiagnosticsLab ? (
+              {selectedLeadDetail.followUps.some((followUp) => followUp.kind === 'POST_REPORT') ? (
                 <Card>
                   <CardHeader>
-                    <CardTitle className="text-base">Report Workflow</CardTitle>
+                    <CardTitle className="text-base">{dictionary.labels.reportLabel} Workflow</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-3 text-sm">
                     <p>
@@ -925,14 +1165,14 @@ export function LeadsPage(): React.JSX.Element {
                       <span className="font-semibold">{stageLabel(inferStageKey(selectedLeadDetail.lead, sortedStages), sortedStages)}</span>
                     </p>
                     <p className="text-muted-foreground">
-                      Post-report follow-up tasks are surfaced as first-class items when report delivery milestone is reached.
+                      Post-{dictionary.labels.reportLabel.toLowerCase()} {dictionary.labels.followupLabel.toLowerCase()} tasks are surfaced as first-class items when that milestone is reached.
                     </p>
                     <div className="space-y-2">
                       {selectedLeadDetail.followUps
                         .filter((followUp) => followUp.kind === 'POST_REPORT')
                         .map((followUp) => (
                           <div key={followUp.id} className="rounded-md border bg-accent/40 p-3">
-                            <p className="font-medium">Post-report follow-up</p>
+                            <p className="font-medium">{followupPurposeLabel(followUp, sortedStages)}</p>
                             <p className="text-xs text-muted-foreground">
                               Due {new Date(followUp.scheduledAt).toLocaleString()} • {followUp.done ? 'Done' : 'Pending'}
                             </p>
@@ -964,6 +1204,7 @@ export function LeadsPage(): React.JSX.Element {
                             </span>
                           </div>
                           <p className="mt-2 text-sm font-medium">{new Date(followUp.scheduledAt).toLocaleString()}</p>
+                          <p className="mt-1 text-sm text-foreground">{followupPurposeLabel(followUp, sortedStages)}</p>
                           {followUp.note ? <p className="mt-1 text-xs text-muted-foreground">{followUp.note}</p> : null}
                         </div>
                       ))

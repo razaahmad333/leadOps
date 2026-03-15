@@ -36,7 +36,7 @@ export class FollowUpsService {
     const page = query.page;
     const pageSize = query.pageSize;
     const search = query.search?.trim();
-    const includeOverdue = query.includeOverdue;
+    const status = query.status;
 
     if (query.branchId) {
       this.branchScope.ensureBranchAccess(user, query.branchId);
@@ -86,8 +86,20 @@ export class FollowUpsService {
     const where: Prisma.FollowUpWhereInput = {
       tenantId: tenant?.tenantId,
       done: false,
-      scheduledAt: includeOverdue ? { lte: end } : { gte: start, lte: end },
     };
+
+    if (status === 'all') {
+      where.scheduledAt = { lte: end };
+    } else if (status === 'due_today') {
+      where.scheduledAt = { gte: start, lte: end };
+    } else if (status === 'overdue') {
+      where.scheduledAt = { lt: start };
+    } else if (status === 'escalated') {
+      where.OR = [
+        { escalatedAt: { not: null } },
+        { secondEscalatedAt: { not: null } },
+      ];
+    }
 
     if (Object.keys(leadWhere).length > 0) {
       where.lead = { is: leadWhere };
@@ -113,7 +125,11 @@ export class FollowUpsService {
             },
           },
         },
-        orderBy: { scheduledAt: 'asc' },
+        orderBy: [
+          { secondEscalatedAt: { sort: 'desc', nulls: 'last' } },
+          { escalatedAt: { sort: 'desc', nulls: 'last' } },
+          { scheduledAt: 'asc' },
+        ],
         skip: (page - 1) * pageSize,
         take: pageSize,
       }),
@@ -122,8 +138,21 @@ export class FollowUpsService {
 
     return buildPaginatedResponse(
       followUps.map((item) => ({
-        ...item,
+        id: item.id,
+        tenantId: item.tenantId,
+        leadId: item.leadId,
+        kind: item.kind,
+        purposeKey: item.purposeKey,
+        purposeLabel: item.purposeLabelSnapshot,
+        scheduledAt: item.scheduledAt,
+        note: item.note,
+        done: item.done,
+        escalatedAt: item.escalatedAt,
+        secondEscalatedAt: item.secondEscalatedAt,
+        createdAt: item.createdAt,
+        updatedAt: item.updatedAt,
         assignedUser: item.user,
+        lead: item.lead,
       })) as TodayFollowUp[],
       page,
       pageSize,
@@ -144,6 +173,11 @@ export class FollowUpsService {
     this.branchScope.ensureLeadAccess(actor, lead);
 
     const scheduledAt = await this.tenantConfig.normalizeToBusinessWindow(dto.scheduledAt);
+    const purpose = await this.tenantConfig.resolveFollowupPurpose({
+      stageKey: lead.stageKey,
+      purposeKey: dto.purposeKey,
+      tenantId: lead.tenantId,
+    });
 
     const followUp = await this.prisma.followUp.create({
       data: {
@@ -151,6 +185,8 @@ export class FollowUpsService {
         leadId: lead.id,
         assignedTo: dto.assignedTo,
         kind: 'GENERAL',
+        purposeKey: purpose.key,
+        purposeLabelSnapshot: purpose.label,
         scheduledAt,
         note: dto.note,
       },
@@ -171,7 +207,7 @@ export class FollowUpsService {
       },
     });
 
-    await this.queue.scheduleFollowupReminder(
+    await this.queue.scheduleFollowupNotifications(
       { tenantId: lead.tenantId, followUpId: followUp.id },
       scheduledAt,
     );
@@ -208,7 +244,7 @@ export class FollowUpsService {
       },
     });
 
-    await this.queue.cancelFollowupReminder(followUp.id);
+    await this.queue.cancelFollowupNotifications(followUp.id);
 
     await this.prisma.leadActivity.create({
       data: {
@@ -234,6 +270,10 @@ export class FollowUpsService {
         const autoScheduled = await this.tenantConfig.normalizeToBusinessWindow(
           new Date(Date.now() + 24 * 60 * 60 * 1000),
         );
+        const continuityPurpose = await this.tenantConfig.resolveFollowupPurpose({
+          stageKey: followUp.lead.stageKey,
+          tenantId: followUp.tenantId,
+        });
 
         const generated = await this.prisma.followUp.create({
           data: {
@@ -241,6 +281,8 @@ export class FollowUpsService {
             leadId: followUp.leadId,
             assignedTo: followUp.assignedTo,
             kind: 'GENERAL',
+            purposeKey: continuityPurpose.key,
+            purposeLabelSnapshot: continuityPurpose.label,
             scheduledAt: autoScheduled,
             note: 'Auto-generated to keep active lead follow-up continuity',
           },
@@ -251,7 +293,7 @@ export class FollowUpsService {
           data: { nextFollowUpAt: autoScheduled },
         });
 
-        await this.queue.scheduleFollowupReminder(
+        await this.queue.scheduleFollowupNotifications(
           { tenantId: followUp.tenantId, followUpId: generated.id },
           autoScheduled,
         );

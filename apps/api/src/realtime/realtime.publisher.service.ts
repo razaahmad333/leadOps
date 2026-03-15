@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
-import type { RealtimeInvalidationEvent } from '@leadops/shared';
-import { RealtimeInvalidationEventSchema } from '@leadops/shared';
+import type { Notification, RealtimeInvalidationEvent } from '@leadops/shared';
+import { NotificationSchema, RealtimeInvalidationEventSchema } from '@leadops/shared';
 import { RealtimeGateway } from './realtime.gateway';
 
 export type PublishRealtimeInvalidationInput = Omit<RealtimeInvalidationEvent, 'occurredAt'> & {
@@ -25,5 +25,16 @@ export class RealtimePublisherService {
     }
 
     this.gateway.emitInvalidation(parsed.data);
+  }
+
+  publishNotification(input: Notification): void {
+    const parsed = NotificationSchema.safeParse(input);
+
+    if (!parsed.success) {
+      this.logger.warn('Dropped invalid realtime notification payload');
+      return;
+    }
+
+    this.gateway.emitNotification(parsed.data);
   }
 }

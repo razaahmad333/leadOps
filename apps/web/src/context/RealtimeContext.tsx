@@ -9,6 +9,8 @@ import React, {
   type ReactNode,
 } from 'react';
 import {
+  Notification,
+  NotificationSchema,
   RealtimeInvalidationEvent,
   RealtimeInvalidationEventSchema,
   REALTIME_SOCKET_CLIENT_EVENTS,
@@ -18,10 +20,12 @@ import { io, type Socket } from 'socket.io-client';
 import { useAuth } from './AuthContext';
 
 type InvalidationListener = (event: RealtimeInvalidationEvent) => void;
+type NotificationListener = (notification: Notification) => void;
 
 interface RealtimeContextValue {
   connected: boolean;
   subscribeInvalidation: (listener: InvalidationListener) => () => void;
+  subscribeNotification: (listener: NotificationListener) => () => void;
   joinLeadRoom: (leadId: string) => void;
   leaveLeadRoom: (leadId: string) => void;
 }
@@ -47,11 +51,19 @@ export function RealtimeProvider({ children }: { children: ReactNode }): React.J
   const [connected, setConnected] = useState(false);
   const socketRef = useRef<Socket | null>(null);
   const listenersRef = useRef(new Set<InvalidationListener>());
+  const notificationListenersRef = useRef(new Set<NotificationListener>());
 
   const subscribeInvalidation = useCallback((listener: InvalidationListener): (() => void) => {
     listenersRef.current.add(listener);
     return () => {
       listenersRef.current.delete(listener);
+    };
+  }, []);
+
+  const subscribeNotification = useCallback((listener: NotificationListener): (() => void) => {
+    notificationListenersRef.current.add(listener);
+    return () => {
+      notificationListenersRef.current.delete(listener);
     };
   }, []);
 
@@ -111,15 +123,27 @@ export function RealtimeProvider({ children }: { children: ReactNode }): React.J
         listener(parsed.data);
       }
     };
+    const onNotification = (payload: unknown): void => {
+      const parsed = NotificationSchema.safeParse(payload);
+      if (!parsed.success) {
+        return;
+      }
+
+      for (const listener of notificationListenersRef.current) {
+        listener(parsed.data);
+      }
+    };
 
     socket.on('connect', onConnect);
     socket.on('disconnect', onDisconnect);
     socket.on(REALTIME_SOCKET_SERVER_EVENTS.INVALIDATION, onInvalidation);
+    socket.on(REALTIME_SOCKET_SERVER_EVENTS.NOTIFICATION, onNotification);
 
     return () => {
       socket.off('connect', onConnect);
       socket.off('disconnect', onDisconnect);
       socket.off(REALTIME_SOCKET_SERVER_EVENTS.INVALIDATION, onInvalidation);
+      socket.off(REALTIME_SOCKET_SERVER_EVENTS.NOTIFICATION, onNotification);
       socket.disconnect();
       if (socketRef.current === socket) {
         socketRef.current = null;
@@ -143,10 +167,11 @@ export function RealtimeProvider({ children }: { children: ReactNode }): React.J
     () => ({
       connected,
       subscribeInvalidation,
+      subscribeNotification,
       joinLeadRoom,
       leaveLeadRoom,
     }),
-    [connected, joinLeadRoom, leaveLeadRoom, subscribeInvalidation],
+    [connected, joinLeadRoom, leaveLeadRoom, subscribeInvalidation, subscribeNotification],
   );
 
   return <RealtimeContext.Provider value={value}>{children}</RealtimeContext.Provider>;

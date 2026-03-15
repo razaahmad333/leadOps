@@ -25,6 +25,9 @@ export enum BranchScopeType {
 export enum IndustryPreset {
   GENERIC = 'GENERIC',
   DIAGNOSTICS_LAB = 'DIAGNOSTICS_LAB',
+  COSMETIC_CLINIC = 'COSMETIC_CLINIC',
+  DENTAL_CLINIC = 'DENTAL_CLINIC',
+  DOCTOR_OPD_CLINIC = 'DOCTOR_OPD_CLINIC',
 }
 
 export enum MilestoneKey {

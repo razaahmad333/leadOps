@@ -20,6 +20,7 @@ Production-grade LeadOps platform for multi-tenant teams.
 - `docs/ARCHITECTURE.md`
 - `docs/FOUNDATION_RESEARCH.md`
 - `docs/INGESTIONS.md`
+- `docs/USER_MANUAL.md`
 
 ## Local Setup
 ```bash
@@ -79,6 +80,10 @@ Sign in as `admin@local.test` (superadmin) to:
 - create/edit tenant roles (system roles are read-only)
 - update user details, role assignments, branch scope/default branch, and reset passwords
 
+## User Manual
+- Product operating guide: `docs/USER_MANUAL.md`
+- In-app manual: open the manual from the left navigation to see module summaries for the routes your account can access
+
 ## Scripts
 - `pnpm dev`: run API + worker + web
 - `pnpm build`: build all packages via Turbo
@@ -92,13 +97,18 @@ Sign in as `admin@local.test` (superadmin) to:
 
 ## Verification Checklist
 1. Log in with `owner@local.test`; verify tenant selection appears (Demo Lab / Demo Generic).
-2. Open Leads: search, stage filter, branch filter (if multi-branch), and pagination work server-side.
-3. Create a lead with `nextFollowUpAt`; verify a pending `GENERAL` follow-up and reminder job are created.
-4. Update lead status with `nextFollowUpAt`; verify lead + follow-up schedule stay in sync.
-5. Mark a follow-up done from Today; verify reminder job cancellation and continuity behavior for active leads.
-6. Enable Today `Include overdue`; verify overdue items are listed with current filters/pagination.
-7. Change stage to report-delivered milestone; verify post-report follow-up is scheduled from tenant rules.
-8. Open two browser sessions; verify realtime invalidation refreshes Leads/Today after write actions.
+2. Open Dashboard: verify the cards and charts follow the selected branch scope and `Follow-up Health` shows `Overdue`, `Escalated`, `Due Today`, and `Completed Today`.
+3. In single-branch scope, verify `Source Mix` renders as a pie chart; in multi-branch scope, verify the comparison chart switches to branch comparison.
+4. Open Leads: search, stage filter, branch filter (if multi-branch), and pagination work server-side.
+5. Create a lead without `ownerId`; verify the backend resolves a lead owner and the initial follow-up gets an assignee.
+6. Create a lead with `nextFollowUpAt`; verify reminder, first escalation, and second escalation jobs are created.
+7. Open the Due Queue and verify the status filter works for `All due`, `Due today`, `Overdue`, and `Escalated`.
+8. Trigger escalation and verify escalated rows show badges, second-level escalations show `L2`, and escalated work sorts first.
+9. Open the notification bell; verify reminder and escalation notifications appear, unread count updates, and mark-read actions work.
+10. Update lead status with `nextFollowUpAt`; verify lead + follow-up schedule stay in sync.
+11. Mark a follow-up done from Today; verify reminder/escalation job cancellation and continuity behavior for active leads.
+12. Change stage to report-delivered milestone; verify post-report follow-up is scheduled from tenant rules.
+13. Open two browser sessions; verify realtime invalidation refreshes Leads/Today after write actions.
 
 ## Notes
 - WhatsApp inbound/outbound adapters remain scaffolded in v1; public webhook is not exposed yet.

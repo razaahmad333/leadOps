@@ -1,17 +1,26 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   BarChart3,
   Briefcase,
   ListChecks,
+  MessageSquareQuote,
   Settings,
   ShieldCheck,
   Users,
 } from 'lucide-react';
 import { Outlet, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
+import type {
+  Notification as AppNotification,
+  NotificationListResponse,
+  NotificationMutationResult,
+  UnreadNotificationCount,
+} from '@leadops/shared';
 import { useAuth } from '../../context/AuthContext';
 import { useProductTour } from '../../context/ProductTourContext';
+import { useRealtime } from '../../context/RealtimeContext';
 import { useTenant } from '../../context/TenantContext';
+import { api } from '../../lib/api';
 import { buildBranchOptions, resolveBranchScopeLabel } from '../../lib/branch-scope';
 import { cn } from '../../lib/utils';
 import { Skeleton } from '../ui/skeleton';
@@ -26,6 +35,7 @@ import { navTourId, resolveDefaultRouteForPermissions, resolveSupportContacts } 
 
 export function AppShell(): React.JSX.Element {
   const { user, logout, switchTenant, can, defaultRoute, selectedBranchId, setSelectedBranchId } = useAuth();
+  const { subscribeNotification } = useRealtime();
   const { startTour } = useProductTour();
   const { dictionary, loading, profile } = useTenant();
   const navigate = useNavigate();
@@ -34,6 +44,9 @@ export function AppShell(): React.JSX.Element {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [manualOpen, setManualOpen] = useState(false);
   const [supportOpen, setSupportOpen] = useState(false);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
+  const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
 
   const navItems = useMemo<NavItem[]>(
     () => [
@@ -50,6 +63,13 @@ export function AppShell(): React.JSX.Element {
         mobileLabel: 'Follow-ups',
         icon: ListChecks,
         permission: 'followups.view',
+      },
+      {
+        to: '/support/questions',
+        label: 'Q&A Inbox',
+        mobileLabel: 'Q&A',
+        icon: MessageSquareQuote,
+        permission: 'faq.view',
       },
       {
         to: '/leads',
@@ -146,6 +166,134 @@ export function AppShell(): React.JSX.Element {
 
     return resolveBranchScopeLabel(branchOptions, selectedBranchId);
   }, [branchOptions, selectedBranchId, user]);
+
+  const loadUnreadCount = useCallback(async (): Promise<void> => {
+    if (!user) {
+      setUnreadNotificationCount(0);
+      return;
+    }
+
+    try {
+      const response = await api.get<UnreadNotificationCount>('/v1/notifications/unread-count');
+      setUnreadNotificationCount(response.count);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to load notifications');
+    }
+  }, [user]);
+
+  const loadNotifications = useCallback(async (): Promise<void> => {
+    if (!user) {
+      setNotifications([]);
+      return;
+    }
+
+    setNotificationsLoading(true);
+
+    try {
+      const response = await api.get<NotificationListResponse>('/v1/notifications?page=1&pageSize=8&status=all');
+      setNotifications(response.items);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to load notifications');
+    } finally {
+      setNotificationsLoading(false);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) {
+      setNotifications([]);
+      setUnreadNotificationCount(0);
+      return;
+    }
+
+    void loadUnreadCount();
+    void loadNotifications();
+  }, [loadNotifications, loadUnreadCount, user]);
+
+  useEffect(() => {
+    if (!user) {
+      return;
+    }
+
+    return subscribeNotification((notification) => {
+      setNotifications((current) => [notification, ...current.filter((item) => item.id !== notification.id)].slice(0, 8));
+      void loadUnreadCount();
+      toast.info(notification.title, {
+        description: notification.message,
+      });
+    });
+  }, [loadUnreadCount, subscribeNotification, user]);
+
+  const markNotificationRead = useCallback(async (notificationId: string): Promise<void> => {
+    const wasUnread = notifications.some((item) => item.id === notificationId && item.readAt === null);
+    try {
+      const response = await api.patch<NotificationMutationResult>('/v1/notifications/read', { notificationId });
+
+      if (!response.success) {
+        return;
+      }
+
+      setNotifications((current) =>
+        current.map((item) =>
+          item.id === notificationId
+            ? {
+                ...item,
+                readAt: new Date(),
+              }
+            : item,
+        ),
+      );
+
+      if (wasUnread) {
+        setUnreadNotificationCount((current) => Math.max(0, current - 1));
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to mark notification as read');
+    }
+  }, [notifications]);
+
+  const markAllNotificationsRead = useCallback(async (): Promise<void> => {
+    try {
+      const response = await api.patch<NotificationMutationResult>('/v1/notifications/read-all', {});
+
+      if (!response.success) {
+        return;
+      }
+
+      const readAt = new Date();
+      setNotifications((current) => current.map((item) => ({ ...item, readAt })));
+      setUnreadNotificationCount(0);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to mark notifications as read');
+    }
+  }, []);
+
+  const openNotification = useCallback(async (notification: AppNotification): Promise<void> => {
+    if (notification.readAt === null) {
+      await markNotificationRead(notification.id);
+    }
+
+    if (can('followups.view')) {
+      void navigate('/staff/today');
+      return;
+    }
+
+    if (can('enquiries.view')) {
+      void navigate('/leads');
+      return;
+    }
+
+    void navigate(defaultRoute);
+  }, [can, defaultRoute, markNotificationRead, navigate]);
+
+  const handleNotificationsOpenChange = useCallback((open: boolean): void => {
+    if (!open) {
+      return;
+    }
+
+    void loadUnreadCount();
+    void loadNotifications();
+  }, [loadNotifications, loadUnreadCount]);
 
   const handleLogout = (): void => {
     logout();
@@ -288,6 +436,13 @@ export function AppShell(): React.JSX.Element {
           branchScopeLabel={branchScopeLabel}
           selectedBranchId={selectedBranchId}
           setSelectedBranchId={setSelectedBranchId}
+          notifications={notifications}
+          notificationsLoading={notificationsLoading}
+          unreadNotificationCount={unreadNotificationCount}
+          onNotificationsOpenChange={handleNotificationsOpenChange}
+          onMarkNotificationRead={markNotificationRead}
+          onMarkAllNotificationsRead={markAllNotificationsRead}
+          onOpenNotification={openNotification}
         />
 
         <main data-tour-id="workspace-main" className="flex-1 px-3 pb-24 pt-5 sm:px-6 sm:pb-28 lg:px-8 lg:pb-8">

@@ -68,6 +68,7 @@ export type TenantSettingsDraft = {
   timezone: string;
   businessStart: string;
   businessEnd: string;
+  defaultLeadFollowupMinutes: string;
   firstReminderMinutes: string;
   escalationMinutes: string;
   postReportFollowupDays: string;
@@ -97,6 +98,7 @@ export type TenantSettingsInput = Pick<
   'timezone' | 'businessStart' | 'businessEnd'
 > & {
   reminderRules: {
+    defaultLeadFollowupMinutes: number;
     firstReminderMinutes: number;
     escalationMinutes: number;
     postReportFollowupDays: number;

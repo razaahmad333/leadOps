@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { CustomEnquiryFieldSchema, TestPackageSchema } from './tenant.schema';
+import { CustomEnquiryFieldSchema, OpdDirectorySchema, TestPackageSchema } from './tenant.schema';
 
 const TimeWindowValueSchema = z
   .string()
@@ -11,6 +11,7 @@ export const TenantSettingsSchema = z.object({
   businessEnd: z.string(),
   stages: z.array(z.string()),
   reminderRules: z.object({
+    defaultLeadFollowupMinutes: z.number().int().positive(),
     firstReminderMinutes: z.number(),
     escalationMinutes: z.number(),
     postReportFollowupDays: z.number().int().positive(),
@@ -30,6 +31,7 @@ export type TenantSettings = z.infer<typeof TenantSettingsSchema>;
 export const TenantIntakeConfigSchema = z.object({
   customEnquiryFields: z.array(CustomEnquiryFieldSchema),
   testPackages: z.array(TestPackageSchema),
+  opdDirectory: OpdDirectorySchema,
 }).strict();
 
 export type TenantIntakeConfig = z.infer<typeof TenantIntakeConfigSchema>;
@@ -45,6 +47,7 @@ export const UpdateTenantSettingsSchema = z
     businessEnd: TimeWindowValueSchema.optional(),
     reminderRules: z
       .object({
+        defaultLeadFollowupMinutes: z.number().int().positive().optional(),
         firstReminderMinutes: z.number().int().nonnegative().optional(),
         escalationMinutes: z.number().int().nonnegative().optional(),
         postReportFollowupDays: z.number().int().positive().optional(),

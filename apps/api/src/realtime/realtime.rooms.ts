@@ -9,3 +9,7 @@ export function branchRoom(tenantId: string, branchId: string): string {
 export function leadRoom(leadId: string): string {
   return `lead:${leadId}`;
 }
+
+export function userRoom(userId: string): string {
+  return `user:${userId}`;
+}

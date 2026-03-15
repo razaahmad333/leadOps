@@ -67,16 +67,16 @@ const TOUR_STEPS: ProductTourStep[] = [
   },
   {
     id: 'leads',
-    title: 'Enquiry list',
-    description: 'Search and filter enquiries by stage and branch. Open any row for detail and activity history.',
+    title: 'Pipeline list',
+    description: 'Search and filter records by stage and branch. Open any row for detail and activity history.',
     route: '/leads',
     selector: '[data-tour-id="leads-list"]',
     permission: 'enquiries.view',
   },
   {
     id: 'leads-create',
-    title: 'Create enquiry',
-    description: 'Create a new enquiry quickly. Branch and next follow-up defaults help reduce clicks.',
+    title: 'Create record',
+    description: 'Create a new record quickly. Branch and next follow-up defaults help reduce clicks.',
     route: '/leads',
     selector: '[data-tour-id="leads-create-button"]',
     permission: 'enquiries.create',
@@ -361,4 +361,3 @@ export function useProductTour(): ProductTourContextValue {
   }
   return context;
 }
-

@@ -110,6 +110,8 @@ export class AuthService {
       kind: 'access',
     });
 
+    await this.recordSuccessfulTenantLogin(user);
+
     const authUser = await this.accessControl.buildAuthUser(
       user.id,
       user.tenantId,
@@ -122,6 +124,25 @@ export class AuthService {
       tenantName: user.tenant.name,
       user: authUser,
     };
+  }
+
+  private async recordSuccessfulTenantLogin(user: AuthMembership): Promise<void> {
+    const now = new Date();
+
+    await this.prisma.userLoginSummary.upsert({
+      where: {
+        userId: user.id,
+      },
+      create: {
+        userId: user.id,
+        tenantId: user.tenantId,
+        firstLoggedInAt: now,
+        lastLoggedInAt: now,
+      },
+      update: {
+        lastLoggedInAt: now,
+      },
+    });
   }
 
   private async findSingleOtpAccount(phone: string): Promise<Account> {

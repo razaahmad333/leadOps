@@ -15,6 +15,7 @@ import {
 import type {
   AuthUser,
   RealtimeInvalidationEvent,
+  RealtimeNotification,
 } from '@leadops/shared';
 import {
   RealtimeBranchSelectionSchema,
@@ -27,7 +28,7 @@ import { AccessControlService } from '../access-control/access-control.service';
 import { BranchScopeService } from '../access-control/branch-scope.service';
 import { isAllowedOrigin, resolveConfiguredOrigins } from '../common/security/origin.util';
 import { PrismaService } from '../prisma/prisma.service';
-import { branchRoom, leadRoom, tenantRoom } from './realtime.rooms';
+import { branchRoom, leadRoom, tenantRoom, userRoom } from './realtime.rooms';
 
 interface AccessTokenPayload {
   sub: string;
@@ -74,6 +75,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       this.sessions.set(client.id, session);
 
       client.join(tenantRoom(session.user.tenantId));
+      client.join(userRoom(session.user.id));
 
       if (session.selectedBranchId) {
         client.join(branchRoom(session.user.tenantId, session.selectedBranchId));
@@ -185,6 +187,15 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     }
 
     this.server.to(rooms).emit(REALTIME_SOCKET_SERVER_EVENTS.INVALIDATION, event);
+  }
+
+  emitNotification(notification: RealtimeNotification): void {
+    if (!this.server) {
+      this.logger.debug('Realtime server not ready. Skipping notification emit.');
+      return;
+    }
+
+    this.server.to(userRoom(notification.userId)).emit(REALTIME_SOCKET_SERVER_EVENTS.NOTIFICATION, notification);
   }
 
   private async authenticate(client: Socket): Promise<RealtimeSession> {

@@ -22,8 +22,10 @@ DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
 
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
->(({ className, children, ...props }, ref) => (
+  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
+    preventImplicitClose?: boolean;
+  }
+>(({ className, children, preventImplicitClose = false, onEscapeKeyDown, onInteractOutside, onPointerDownOutside, ...props }, ref) => (
   <DialogPortal>
     <DialogOverlay />
     <DialogPrimitive.Content
@@ -32,6 +34,24 @@ const DialogContent = React.forwardRef<
         'fixed left-1/2 top-1/2 z-50 grid max-h-[92vh] w-[calc(100%-2rem)] max-w-2xl -translate-x-1/2 -translate-y-1/2 gap-4 overflow-y-auto rounded-[1.75rem] border bg-background p-5 shadow-2xl sm:p-6',
         className,
       )}
+      onEscapeKeyDown={(event) => {
+        if (preventImplicitClose) {
+          event.preventDefault();
+        }
+        onEscapeKeyDown?.(event);
+      }}
+      onInteractOutside={(event) => {
+        if (preventImplicitClose) {
+          event.preventDefault();
+        }
+        onInteractOutside?.(event);
+      }}
+      onPointerDownOutside={(event) => {
+        if (preventImplicitClose) {
+          event.preventDefault();
+        }
+        onPointerDownOutside?.(event);
+      }}
       {...props}
     >
       {children}

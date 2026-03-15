@@ -22,11 +22,15 @@ export {
   REALTIME_SOCKET_SERVER_EVENTS,
   REALTIME_SOCKET_CLIENT_EVENTS,
   RealtimeInvalidationEventSchema,
+  RealtimeNotificationSchema,
+  RealtimePubsubMessageSchema,
   RealtimeBranchSelectionSchema,
   RealtimeLeadSubscriptionSchema,
   type RealtimeInvalidationEventName,
   type RealtimeEventSource,
   type RealtimeInvalidationEvent,
+  type RealtimeNotification,
+  type RealtimePubsubMessage,
   type RealtimeBranchSelection,
   type RealtimeLeadSubscription,
 } from './realtime';
@@ -34,7 +38,12 @@ export {
 export {
   REMINDER_QUEUE,
   REPORT_QUEUE,
+  FOLLOWUP_NOTIFICATION_JOB_KINDS,
+  FOLLOWUP_NOTIFICATION_JOB_NAMES,
   type DailyReportJob,
+  type FollowupNotificationJob,
+  type FollowupNotificationJobKind,
+  type FollowupNotificationJobName,
   type FollowupReminderJob,
 } from './queue';
 
@@ -86,19 +95,48 @@ export {
   CreateFollowUpSchema,
   FollowUpSchema,
   TodayFollowUpSchema,
+  DueQueueStatusSchema,
   ListTodayFollowUpsQuerySchema,
   TodayFollowUpListResponseSchema,
   type CreateFollowUpDto,
   type FollowUp,
   type TodayFollowUp,
+  type DueQueueStatus,
   type ListTodayFollowUpsQueryDto,
   type TodayFollowUpListResponse,
 } from './schemas/followup.schema';
 
 export {
+                                                                                                                                        DashboardAnalyticsSchema,
+  DashboardBreakdownItemSchema,
+  DashboardComparisonItemSchema,
   DashboardStatsSchema,
+  DashboardTrendPointSchema,
+  type DashboardAnalytics,
+  type DashboardBreakdownItem,
+  type DashboardComparisonItem,
   type DashboardStats,
+  type DashboardTrendPoint,
 } from './schemas/dashboard.schema';
+
+export {
+  NotificationTypeSchema,
+  NotificationStatusSchema,
+  NotificationSchema,
+  ListNotificationsQuerySchema,
+  NotificationListResponseSchema,
+  UnreadNotificationCountSchema,
+  MarkNotificationReadSchema,
+  NotificationMutationResultSchema,
+  type NotificationType,
+  type NotificationStatus,
+  type Notification,
+  type ListNotificationsQueryDto,
+  type NotificationListResponse,
+  type UnreadNotificationCount,
+  type MarkNotificationReadDto,
+  type NotificationMutationResult,
+} from './schemas/notification.schema';
 
 export {
   TenantSettingsSchema,
@@ -118,6 +156,10 @@ export {
   LeadFieldConfigSchema,
   CustomEnquiryFieldSchema,
   TestPackageSchema,
+  OpdDepartmentSchema,
+  OpdDoctorSchema,
+  OpdDirectorySchema,
+  FollowupPurposeOptionSchema,
   PipelineStageSchema,
   FollowupRulesSchema,
   ThemeConfigSchema,
@@ -132,6 +174,10 @@ export {
   type LeadFieldConfig,
   type CustomEnquiryField,
   type TestPackage,
+  type OpdDepartment,
+  type OpdDoctor,
+  type OpdDirectory,
+  type FollowupPurposeOption,
   type PipelineStage,
   type FollowupRules,
   type ThemeConfig,
@@ -146,6 +192,21 @@ export {
   WebsiteFormIntakeSchema,
   type WebsiteFormIntakeDto,
 } from './schemas/intake.schema';
+
+export {
+  FaqStatusSchema,
+  FaqQuestionSchema,
+  CreateFaqQuestionSchema,
+  AnswerFaqQuestionSchema,
+  ListFaqQuestionsQuerySchema,
+  FaqQuestionListResponseSchema,
+  type FaqStatus,
+  type FaqQuestion,
+  type CreateFaqQuestionDto,
+  type AnswerFaqQuestionDto,
+  type ListFaqQuestionsQueryDto,
+  type FaqQuestionListResponse,
+} from './schemas/faq.schema';
 
 export {
   PermissionDefinitionSchema,

@@ -9,7 +9,6 @@ import { randomInt, randomUUID } from 'crypto';
 
 interface VerifyRequestResult {
   verificationId: string;
-  devOtpCode?: string;
 }
 
 interface LocalVerification {
@@ -99,7 +98,6 @@ export class MessageBirdVerifyService {
 
     return {
       verificationId,
-      ...(this.isProduction() ? {} : { devOtpCode: code }),
     };
   }
 

@@ -4,8 +4,10 @@ import { Badge } from '../../../components/ui/badge';
 import { Button } from '../../../components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../../components/ui/card';
 import { Input } from '../../../components/ui/input';
+import { RefreshButton } from '../../../components/ui/refresh-button';
 import { Select } from '../../../components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../../components/ui/table';
+import { industryPresetLabel } from '../../../lib/industry-preset';
 import type { SortOrder, TenantSortBy } from '../platform-admin.types';
 
 type TenantDirectoryCardProps = {
@@ -17,6 +19,7 @@ type TenantDirectoryCardProps = {
   onSortOrderChange: (value: string) => void;
   onCreateTenant: () => void;
   onCreateAccess: () => void;
+  onRefresh: () => void;
 
   tenants: PlatformTenantSummary[];
   tableEmpty: boolean;
@@ -41,6 +44,7 @@ export function TenantDirectoryCard(props: TenantDirectoryCardProps): React.JSX.
     onSortOrderChange,
     onCreateTenant,
     onCreateAccess,
+    onRefresh,
     tenants,
     tableEmpty,
     onOpenTenant,
@@ -64,6 +68,7 @@ export function TenantDirectoryCard(props: TenantDirectoryCardProps): React.JSX.
           </div>
 
           <div className="flex w-full flex-col gap-2 sm:flex-row xl:w-auto">
+            <RefreshButton loading={tenantsLoading} onClick={onRefresh} />
             <Button onClick={onCreateTenant}>Create Tenant</Button>
             <Button variant="outline" onClick={onCreateAccess}>Create Account Access</Button>
           </div>
@@ -118,7 +123,7 @@ export function TenantDirectoryCard(props: TenantDirectoryCardProps): React.JSX.
                     <TableCell className="text-muted-foreground">{tenant.slug}</TableCell>
                     <TableCell>
                       <Badge variant="outline">
-                        {tenant.industryPreset === 'DIAGNOSTICS_LAB' ? 'Diagnostics Lab' : 'Generic'}
+                        {industryPresetLabel(tenant.industryPreset)}
                       </Badge>
                     </TableCell>
                     <TableCell>{tenant.userCount}</TableCell>

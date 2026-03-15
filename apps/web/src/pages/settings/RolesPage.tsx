@@ -28,6 +28,7 @@ import {
 } from '../../components/ui/dialog';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
+import { RefreshButton } from '../../components/ui/refresh-button';
 import { Skeleton } from '../../components/ui/skeleton';
 
 interface RoleFormState {
@@ -197,10 +198,13 @@ export function RolesPage(): React.JSX.Element {
             Build permission bundles once, then assign them across the tenant.
           </p>
         </div>
-        <Button data-tour-id="roles-create-role" onClick={openCreate} className="gap-2 self-start w-full sm:w-auto">
-          <Plus className="h-4 w-4" />
-          Create Role
-        </Button>
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+          <RefreshButton loading={loading} onClick={() => void loadData()} className="w-full sm:w-auto" />
+          <Button data-tour-id="roles-create-role" onClick={openCreate} className="gap-2 self-start w-full sm:w-auto">
+            <Plus className="h-4 w-4" />
+            Create Role
+          </Button>
+        </div>
       </div>
 
       <Card className="rounded-3xl border-white/80 bg-card/95">
@@ -293,7 +297,7 @@ export function RolesPage(): React.JSX.Element {
       </Card>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent>
+        <DialogContent preventImplicitClose>
           <DialogHeader>
             <DialogTitle>{editingRole ? 'Edit Role' : 'Create Role'}</DialogTitle>
             <DialogDescription>
@@ -361,9 +365,6 @@ export function RolesPage(): React.JSX.Element {
           {formError ? <p className="text-sm text-destructive">{formError}</p> : null}
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={saving}>
-              Cancel
-            </Button>
             <Button onClick={() => void submit()} disabled={saving}>
               {saving ? 'Saving...' : editingRole ? 'Save Changes' : 'Create Role'}
             </Button>

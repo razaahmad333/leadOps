@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { NotificationSchema } from './schemas/notification.schema';
 
 export const REALTIME_REDIS_CHANNEL = 'leadops:realtime:events';
 
@@ -10,6 +11,7 @@ export const REALTIME_INVALIDATION_EVENTS = {
 
 export const REALTIME_SOCKET_SERVER_EVENTS = {
   INVALIDATION: 'realtime.invalidation',
+  NOTIFICATION: 'realtime.notification',
 } as const;
 
 export const REALTIME_SOCKET_CLIENT_EVENTS = {
@@ -44,8 +46,16 @@ export const RealtimeLeadSubscriptionSchema = z.object({
   leadId: z.string().min(1),
 });
 
+export const RealtimeNotificationSchema = NotificationSchema;
+export const RealtimePubsubMessageSchema = z.union([
+  RealtimeInvalidationEventSchema,
+  RealtimeNotificationSchema,
+]);
+
 export type RealtimeInvalidationEventName = z.infer<typeof RealtimeInvalidationEventEnum>;
 export type RealtimeEventSource = z.infer<typeof RealtimeEventSourceEnum>;
 export type RealtimeInvalidationEvent = z.infer<typeof RealtimeInvalidationEventSchema>;
 export type RealtimeBranchSelection = z.infer<typeof RealtimeBranchSelectionSchema>;
 export type RealtimeLeadSubscription = z.infer<typeof RealtimeLeadSubscriptionSchema>;
+export type RealtimeNotification = z.infer<typeof RealtimeNotificationSchema>;
+export type RealtimePubsubMessage = z.infer<typeof RealtimePubsubMessageSchema>;

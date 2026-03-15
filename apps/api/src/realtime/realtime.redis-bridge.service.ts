@@ -1,6 +1,9 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { REALTIME_REDIS_CHANNEL, RealtimeInvalidationEventSchema } from '@leadops/shared';
+import {
+  REALTIME_REDIS_CHANNEL,
+  RealtimePubsubMessageSchema,
+} from '@leadops/shared';
 import Redis from 'ioredis';
 import { RealtimePublisherService } from './realtime.publisher.service';
 
@@ -54,14 +57,19 @@ export class RealtimeRedisBridgeService implements OnModuleInit, OnModuleDestroy
   private handleRealtimeMessage(message: string): void {
     try {
       const parsedJson: unknown = JSON.parse(message);
-      const parsedEvent = RealtimeInvalidationEventSchema.safeParse(parsedJson);
+      const parsedEvent = RealtimePubsubMessageSchema.safeParse(parsedJson);
 
       if (!parsedEvent.success) {
         this.logger.warn('Dropped invalid realtime pubsub payload');
         return;
       }
 
-      this.realtimePublisher.publishInvalidation(parsedEvent.data);
+      if ('event' in parsedEvent.data) {
+        this.realtimePublisher.publishInvalidation(parsedEvent.data);
+        return;
+      }
+
+      this.realtimePublisher.publishNotification(parsedEvent.data);
     } catch (error) {
       this.logger.warn(
         `Failed to process realtime pubsub payload: ${error instanceof Error ? error.message : 'Unknown error'}`,

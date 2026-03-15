@@ -45,7 +45,7 @@ export function EditBranchDialog(props: EditBranchDialogProps): React.JSX.Elemen
         }
       }}
     >
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-lg" preventImplicitClose>
         <DialogHeader>
           <DialogTitle>Edit Branch</DialogTitle>
           <DialogDescription>Update branch name and description.</DialogDescription>
@@ -76,9 +76,6 @@ export function EditBranchDialog(props: EditBranchDialogProps): React.JSX.Elemen
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={onClose}>
-              Cancel
-            </Button>
             <Button disabled={savingBranch || !editingBranchId} onClick={onSave}>
               {savingBranch ? 'Saving...' : 'Save Branch'}
             </Button>

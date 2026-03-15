@@ -3,6 +3,7 @@ import { CheckCircle2, Search } from 'lucide-react';
 import {
   REALTIME_INVALIDATION_EVENTS,
   type Branch,
+  type DueQueueStatus,
   type TodayFollowUp,
   type TodayFollowUpListResponse,
 } from '@leadops/shared';
@@ -16,12 +17,19 @@ import { buildAccessibleBranches, resolveBranchFilterValue } from '../lib/branch
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
-import { Checkbox } from '../components/ui/checkbox';
 import { Input } from '../components/ui/input';
+import { RefreshButton } from '../components/ui/refresh-button';
 import { Skeleton } from '../components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
+import { cn } from '../lib/utils';
 
 const PAGE_SIZE = 20;
+const DUE_QUEUE_STATUS_OPTIONS: Array<{ value: DueQueueStatus; label: string }> = [
+  { value: 'all', label: 'All due' },
+  { value: 'due_today', label: 'Due today' },
+  { value: 'overdue', label: 'Overdue' },
+  { value: 'escalated', label: 'Escalated' },
+];
 
 function followupKindLabel(kind: string): string {
   if (kind === 'POST_REPORT') {
@@ -29,6 +37,52 @@ function followupKindLabel(kind: string): string {
   }
 
   return kind.replace('_', ' ');
+}
+
+function followupPurposeLabel(followUp: TodayFollowUp): string {
+  if (followUp.purposeLabel) {
+    return followUp.purposeLabel;
+  }
+
+  return 'General Follow-up';
+}
+
+function getEmptyStateCopy(status: DueQueueStatus, followupLabel: string): { title: string; description: string } {
+  const normalizedLabel = followupLabel.toLowerCase();
+
+  if (status === 'due_today') {
+    return {
+      title: `No ${normalizedLabel}s scheduled for today.`,
+      description: 'Nothing is due today. Overdue or escalated work can be reviewed from the status filter.',
+    };
+  }
+
+  if (status === 'overdue') {
+    return {
+      title: `No overdue ${normalizedLabel}s.`,
+      description: 'Everything due before today has been cleared or rescheduled.',
+    };
+  }
+
+  if (status === 'escalated') {
+    return {
+      title: `No escalated ${normalizedLabel}s.`,
+      description: 'There are no escalated items in the queue right now.',
+    };
+  }
+
+  return {
+    title: `No overdue, escalated, or due-today ${normalizedLabel}s.`,
+    description: 'You are caught up. Future-scheduled reminders will appear here when they become due.',
+  };
+}
+
+function isEscalated(followUp: TodayFollowUp): boolean {
+  return followUp.escalatedAt !== null || followUp.secondEscalatedAt !== null;
+}
+
+function isSecondLevelEscalated(followUp: TodayFollowUp): boolean {
+  return followUp.secondEscalatedAt !== null;
 }
 
 export function TodayPage(): React.JSX.Element {
@@ -40,7 +94,7 @@ export function TodayPage(): React.JSX.Element {
   const [query, setQuery] = useState('');
   const debouncedQuery = useDebouncedValue(query.trim(), 350);
   const [branchFilter, setBranchFilter] = useState<string>('ALL');
-  const [includeOverdue, setIncludeOverdue] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<DueQueueStatus>('all');
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
@@ -56,12 +110,17 @@ export function TodayPage(): React.JSX.Element {
     return new Map(accessibleBranches.map((branch) => [branch.id, branch.name]));
   }, [accessibleBranches]);
   const canChooseBranch = accessibleBranches.length > 1;
+  const emptyStateCopy = useMemo(
+    () => getEmptyStateCopy(statusFilter, dictionary.labels.followupLabel),
+    [dictionary.labels.followupLabel, statusFilter],
+  );
 
   const load = useCallback((): void => {
     setLoading(true);
     const params = new URLSearchParams({
       page: String(page),
       pageSize: String(PAGE_SIZE),
+      status: statusFilter,
     });
 
     if (debouncedQuery) {
@@ -70,10 +129,6 @@ export function TodayPage(): React.JSX.Element {
 
     if (canChooseBranch && branchFilter !== 'ALL') {
       params.set('branchId', branchFilter);
-    }
-
-    if (includeOverdue) {
-      params.set('includeOverdue', 'true');
     }
 
     api
@@ -95,7 +150,7 @@ export function TodayPage(): React.JSX.Element {
         setTotalPages(1);
       })
       .finally(() => setLoading(false));
-  }, [branchFilter, canChooseBranch, debouncedQuery, includeOverdue, page, profile?.tenantId, selectedBranchId]);
+  }, [branchFilter, canChooseBranch, debouncedQuery, page, profile?.tenantId, selectedBranchId, statusFilter]);
 
   useEffect(() => {
     setBranchFilter((current) => {
@@ -105,7 +160,7 @@ export function TodayPage(): React.JSX.Element {
 
   useEffect(() => {
     setPage(1);
-  }, [branchFilter, debouncedQuery, includeOverdue, profile?.tenantId, selectedBranchId]);
+  }, [branchFilter, debouncedQuery, profile?.tenantId, selectedBranchId, statusFilter]);
 
   useEffect(() => {
     load();
@@ -158,9 +213,9 @@ export function TodayPage(): React.JSX.Element {
       <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div className="space-y-2 pt-2 sm:pt-3">
           <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Daily Queue</p>
-          <h1 className="text-2xl font-bold">{dictionary.labels.todayFollowupsTitle}</h1>
+          <h1 className="text-2xl font-bold">Due Queue</h1>
           <p className="text-sm text-muted-foreground">
-            Ensure every active {dictionary.labels.leadSingular.toLowerCase()} gets timely attention.
+            Review due-today, overdue, and escalated {dictionary.labels.followupLabel.toLowerCase()}s in one queue.
           </p>
         </div>
 
@@ -189,11 +244,18 @@ export function TodayPage(): React.JSX.Element {
               ))}
             </select>
           ) : null}
-          <Checkbox
-            checked={includeOverdue}
-            onChange={(event) => setIncludeOverdue(event.target.checked)}
-            label="Include overdue"
-          />
+          <select
+            value={statusFilter}
+            onChange={(event) => setStatusFilter(event.target.value as DueQueueStatus)}
+            className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm lg:w-40"
+          >
+            {DUE_QUEUE_STATUS_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          <RefreshButton loading={loading} onClick={load} className="w-full lg:w-auto" />
         </div>
       </div>
 
@@ -210,26 +272,39 @@ export function TodayPage(): React.JSX.Element {
             </div>
           ) : followUps.length === 0 ? (
             <div className="rounded-lg border border-dashed p-10 text-center">
-              <p className="font-semibold">{dictionary.labels.emptyFollowups}</p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                You are caught up. New reminders will appear here automatically.
-              </p>
+              <p className="font-semibold">{emptyStateCopy.title}</p>
+              <p className="mt-1 text-sm text-muted-foreground">{emptyStateCopy.description}</p>
             </div>
           ) : (
             <>
               <div className="space-y-3 md:hidden">
                 {followUps.map((followUp) => (
-                  <div key={followUp.id} className="rounded-2xl border border-white/70 bg-background/70 p-4">
+                  <div
+                    key={followUp.id}
+                    className={cn(
+                      'rounded-2xl border border-white/70 bg-background/70 p-4',
+                      isSecondLevelEscalated(followUp)
+                        ? 'border-red-300 bg-red-100/80 shadow-md'
+                        : isEscalated(followUp)
+                          ? 'border-red-200 bg-red-50/70 shadow-sm'
+                          : null,
+                    )}
+                  >
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <p className="font-semibold">{followUp.lead.name}</p>
                         <p className="mt-1 text-xs text-muted-foreground">{followUp.lead.phone ?? 'No phone'}</p>
                       </div>
-                      <Badge variant={followUp.kind === 'POST_REPORT' ? 'warning' : 'secondary'}>
-                        {followupKindLabel(followUp.kind)}
-                      </Badge>
+                      <div className="flex flex-wrap justify-end gap-2">
+                        <Badge variant={followUp.kind === 'POST_REPORT' ? 'warning' : 'secondary'}>
+                          {followupKindLabel(followUp.kind)}
+                        </Badge>
+                        {isEscalated(followUp) ? <Badge variant="danger">Escalated</Badge> : null}
+                        {isSecondLevelEscalated(followUp) ? <Badge variant="outline">L2</Badge> : null}
+                      </div>
                     </div>
                     <div className="mt-3 space-y-1 text-sm text-muted-foreground">
+                      <p className="font-medium text-foreground">{followupPurposeLabel(followUp)}</p>
                       <p>{new Date(followUp.scheduledAt).toLocaleString()}</p>
                       {canChooseBranch ? (
                         <p>
@@ -263,7 +338,16 @@ export function TodayPage(): React.JSX.Element {
                   </TableHeader>
                   <TableBody>
                     {followUps.map((followUp) => (
-                      <TableRow key={followUp.id}>
+                      <TableRow
+                        key={followUp.id}
+                        className={cn(
+                          isSecondLevelEscalated(followUp)
+                            ? 'bg-red-100/70 hover:bg-red-100'
+                            : isEscalated(followUp)
+                              ? 'bg-red-50/50 hover:bg-red-100/60'
+                              : null,
+                        )}
+                      >
                         <TableCell className="font-semibold">{followUp.lead.name}</TableCell>
                         {canChooseBranch ? (
                           <TableCell>
@@ -274,9 +358,14 @@ export function TodayPage(): React.JSX.Element {
                         ) : null}
                         <TableCell>{followUp.lead.phone ?? 'N/A'}</TableCell>
                         <TableCell>
-                          <Badge variant={followUp.kind === 'POST_REPORT' ? 'warning' : 'secondary'}>
-                            {followupKindLabel(followUp.kind)}
-                          </Badge>
+                          <div className="flex flex-wrap gap-2">
+                            <Badge variant={followUp.kind === 'POST_REPORT' ? 'warning' : 'secondary'}>
+                              {followupKindLabel(followUp.kind)}
+                            </Badge>
+                            {isEscalated(followUp) ? <Badge variant="danger">Escalated</Badge> : null}
+                            {isSecondLevelEscalated(followUp) ? <Badge variant="outline">L2</Badge> : null}
+                          </div>
+                          <p className="mt-2 text-sm text-foreground">{followupPurposeLabel(followUp)}</p>
                         </TableCell>
                         <TableCell>{new Date(followUp.scheduledAt).toLocaleString()}</TableCell>
                         <TableCell>{followUp.assignedUser?.name ?? 'Unassigned'}</TableCell>

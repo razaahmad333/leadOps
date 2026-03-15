@@ -7,6 +7,7 @@ import {
   ParseUUIDPipe,
   Post,
   Query,
+  Res,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -33,6 +34,10 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 import { LeadsService } from './leads.service';
 
+interface ReplyHeaders {
+  header(name: string, value: string): unknown;
+}
+
 @ApiTags('leads')
 @ApiBearerAuth()
 @Controller('leads')
@@ -47,6 +52,19 @@ export class LeadsController {
     @Query(new ZodValidationPipe(ListLeadsQuerySchema)) query: ListLeadsQueryDto,
   ): Promise<LeadListResponse> {
     return this.leadsService.findAll(user, query);
+  }
+
+  @Get('export')
+  @Permissions('enquiries.view')
+  @ApiOperation({ summary: 'Export filtered leads as CSV' })
+  async exportCsv(
+    @CurrentUser() user: AuthUser,
+    @Query(new ZodValidationPipe(ListLeadsQuerySchema)) query: ListLeadsQueryDto,
+    @Res({ passthrough: true }) response: ReplyHeaders,
+  ): Promise<string> {
+    response.header('Content-Type', 'text/csv; charset=utf-8');
+    response.header('Content-Disposition', `attachment; filename="leads-${new Date().toISOString().slice(0, 10)}.csv"`);
+    return this.leadsService.exportCsv(user, query);
   }
 
   @Get(':id')

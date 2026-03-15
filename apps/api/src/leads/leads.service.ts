@@ -75,6 +75,13 @@ export class LeadsService {
       where.stageKey = query.stageKey;
     }
 
+    if (query.createdFrom || query.createdTo) {
+      where.createdAt = {
+        ...(query.createdFrom ? { gte: query.createdFrom } : {}),
+        ...(query.createdTo ? { lte: query.createdTo } : {}),
+      };
+    }
+
     if (search) {
       where.OR = [
         {
@@ -111,6 +118,80 @@ export class LeadsService {
     return buildPaginatedResponse(leads as unknown as Lead[], page, pageSize, total);
   }
 
+  async exportCsv(user: AuthUser, query: ListLeadsQueryDto): Promise<string> {
+    const tenant = getTenantContext();
+    const selectedBranchId = tenant?.selectedBranchId;
+    const search = query.search?.trim();
+
+    if (query.branchId) {
+      this.branchScope.ensureBranchAccess(user, query.branchId);
+    }
+
+    if (selectedBranchId && query.branchId && query.branchId !== selectedBranchId) {
+      return this.toCsv([
+        ['Name', 'Phone', 'Email', 'Source', 'Stage', 'Status', 'Branch', 'Next Follow-up', 'Created At'],
+      ]);
+    }
+
+    const where = this.branchScope.applyLeadFilterForSelectedBranch<Prisma.LeadWhereInput>(
+      user,
+      { tenantId: tenant?.tenantId },
+      selectedBranchId,
+    );
+
+    if (!selectedBranchId && query.branchId) {
+      where.branchId = query.branchId;
+    }
+
+    if (query.stageKey) {
+      where.stageKey = query.stageKey;
+    }
+
+    if (query.createdFrom || query.createdTo) {
+      where.createdAt = {
+        ...(query.createdFrom ? { gte: query.createdFrom } : {}),
+        ...(query.createdTo ? { lte: query.createdTo } : {}),
+      };
+    }
+
+    if (search) {
+      where.OR = [
+        { name: { contains: search, mode: 'insensitive' } },
+        { phone: { contains: search, mode: 'insensitive' } },
+        { email: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+
+    const leads = await this.prisma.lead.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      include: {
+        branch: {
+          select: {
+            name: true,
+          },
+        },
+      },
+    });
+
+    const rows = [
+      ['Name', 'Phone', 'Email', 'Source', 'Stage', 'Status', 'Branch', 'Next Follow-up', 'Created At'],
+      ...leads.map((lead) => [
+        lead.name,
+        lead.phone ?? '',
+        lead.email ?? '',
+        lead.source ?? '',
+        lead.stageKey ?? '',
+        lead.status,
+        lead.branch?.name ?? '',
+        lead.nextFollowUpAt?.toISOString() ?? '',
+        lead.createdAt.toISOString(),
+      ]),
+    ];
+
+    return this.toCsv(rows);
+  }
+
   async findOne(id: string, user: AuthUser): Promise<LeadDetail> {
     const tenant = getTenantContext();
 
@@ -122,10 +203,13 @@ export class LeadsService {
           select: {
             id: true,
             kind: true,
+            purposeKey: true,
+            purposeLabelSnapshot: true,
             scheduledAt: true,
             done: true,
             note: true,
             escalatedAt: true,
+            secondEscalatedAt: true,
           },
         },
         activities: {
@@ -148,7 +232,17 @@ export class LeadsService {
 
     return {
       lead: lead as unknown as Lead,
-      followUps: lead.followUps,
+      followUps: lead.followUps.map((followUp) => ({
+        id: followUp.id,
+        kind: followUp.kind,
+        purposeKey: followUp.purposeKey,
+        purposeLabel: followUp.purposeLabelSnapshot,
+        scheduledAt: followUp.scheduledAt,
+        done: followUp.done,
+        note: followUp.note,
+        escalatedAt: followUp.escalatedAt,
+        secondEscalatedAt: followUp.secondEscalatedAt,
+      })),
       activities: lead.activities,
     } as LeadDetail;
   }
@@ -156,6 +250,7 @@ export class LeadsService {
   async create(dto: CreateLeadDto, options: CreateLeadOptions = {}): Promise<Lead> {
     const tenant = getTenantContext();
     const actor = options.actor;
+    const tenantId = tenant?.tenantId ?? '';
 
     const defaultStage = await this.tenantConfig.getDefaultStage(tenant?.tenantId);
     const resolvedStage = dto.stageKey
@@ -169,6 +264,11 @@ export class LeadsService {
     this.ensureActiveLeadFollowUp(resolvedStage.internalStatus, dto.nextFollowUpAt);
 
     const normalizedFollowUp = new Date(dto.nextFollowUpAt);
+    const initialPurpose = await this.tenantConfig.resolveFollowupPurpose({
+      stageKey: resolvedStage.key,
+      purposeKey: dto.followUpPurposeKey,
+      tenantId,
+    });
 
     const serializedIntakeData = dto.intakeData
       ? (JSON.parse(JSON.stringify(dto.intakeData)) as Prisma.InputJsonValue)
@@ -196,10 +296,17 @@ export class LeadsService {
       this.branchScope.ensureBranchAccess(actor, selectedBranchId);
     }
 
+    const effectiveOwnerId = await this.resolveEffectiveOwnerId({
+      explicitOwnerId: dto.ownerId ?? null,
+      actorId: actor?.id ?? null,
+      tenantId,
+      branchId: selectedBranchId,
+    });
+
     const lead = await this.prisma.lead.create({
       data: {
-        tenantId: tenant?.tenantId ?? '',
-        ownerId: dto.ownerId,
+        tenantId,
+        ownerId: effectiveOwnerId,
         branchId: selectedBranchId,
         stageKey: resolvedStage.key,
         name: dto.name,
@@ -216,9 +323,11 @@ export class LeadsService {
       data: {
         tenantId: lead.tenantId,
         leadId: lead.id,
-        assignedTo: lead.ownerId,
+        assignedTo: effectiveOwnerId,
         scheduledAt: normalizedFollowUp,
         kind: 'GENERAL',
+        purposeKey: initialPurpose.key,
+        purposeLabelSnapshot: initialPurpose.label,
         note: dto.note ?? 'Initial follow-up',
       },
     });
@@ -233,7 +342,7 @@ export class LeadsService {
       },
     });
 
-    await this.queue.scheduleFollowupReminder(
+    await this.queue.scheduleFollowupNotifications(
       {
         tenantId: lead.tenantId,
         followUpId: initialFollowUp.id,
@@ -310,6 +419,14 @@ export class LeadsService {
       throw new BadRequestException('Every active lead must have a next follow-up time');
     }
 
+    const nextFollowUpPurpose = isActiveLeadStatus
+      ? await this.tenantConfig.resolveFollowupPurpose({
+          stageKey: nextStage.key,
+          purposeKey: dto.followUpPurposeKey,
+          tenantId: tenant?.tenantId,
+        })
+      : null;
+
     const {
       updatedLead: updated,
       followUpToReschedule,
@@ -352,7 +469,7 @@ export class LeadsService {
             },
           });
         }
-      } else if (dto.nextFollowUpAt && nextFollowUpAt) {
+      } else if (nextFollowUpAt && nextFollowUpPurpose) {
         const pendingGeneralFollowUp = await tx.followUp.findFirst({
           where: {
             tenantId: existing.tenantId,
@@ -361,20 +478,22 @@ export class LeadsService {
             kind: 'GENERAL',
           },
           orderBy: { scheduledAt: 'asc' },
-          select: { id: true },
+          select: { id: true, scheduledAt: true },
         });
 
         if (pendingGeneralFollowUp) {
           await tx.followUp.update({
             where: { id: pendingGeneralFollowUp.id },
             data: {
-              scheduledAt: nextFollowUpAt,
+              scheduledAt: dto.nextFollowUpAt ? nextFollowUpAt : pendingGeneralFollowUp.scheduledAt,
+              purposeKey: nextFollowUpPurpose.key,
+              purposeLabelSnapshot: nextFollowUpPurpose.label,
             },
           });
 
           followUpToRescheduleFromStatus = {
             followUpId: pendingGeneralFollowUp.id,
-            runAt: nextFollowUpAt,
+            runAt: dto.nextFollowUpAt ? nextFollowUpAt : pendingGeneralFollowUp.scheduledAt,
           };
 
           await tx.leadActivity.create({
@@ -382,8 +501,10 @@ export class LeadsService {
               tenantId: existing.tenantId,
               leadId: existing.id,
               actorId: actor?.id ?? null,
-              type: 'followup.rescheduled',
-              message: `Follow-up rescheduled to ${nextFollowUpAt.toISOString()} from status update`,
+              type: dto.nextFollowUpAt ? 'followup.rescheduled' : 'followup.purpose.updated',
+              message: dto.nextFollowUpAt
+                ? `Follow-up rescheduled to ${nextFollowUpAt.toISOString()} from status update`
+                : `Follow-up purpose updated to ${nextFollowUpPurpose.label} from status update`,
             },
           });
         } else {
@@ -394,6 +515,8 @@ export class LeadsService {
               assignedTo: existing.ownerId,
               kind: 'GENERAL',
               scheduledAt: nextFollowUpAt,
+              purposeKey: nextFollowUpPurpose.key,
+              purposeLabelSnapshot: nextFollowUpPurpose.label,
               note: 'Auto-created from status update',
             },
           });
@@ -448,14 +571,14 @@ export class LeadsService {
     });
 
     if (followUpToReschedule) {
-      await this.queue.rescheduleFollowupReminder(
+      await this.queue.rescheduleFollowupNotifications(
         { tenantId: updated.tenantId, followUpId: followUpToReschedule.followUpId },
         followUpToReschedule.runAt,
       );
     }
 
     if (followUpIdsToCancel.length > 0) {
-      await Promise.all(followUpIdsToCancel.map((followUpId) => this.queue.cancelFollowupReminder(followUpId)));
+      await Promise.all(followUpIdsToCancel.map((followUpId) => this.queue.cancelFollowupNotifications(followUpId)));
     }
 
     const milestone = await this.tenantConfig.getStageMilestone(nextStage.key, tenant?.tenantId);
@@ -558,6 +681,85 @@ export class LeadsService {
     }
   }
 
+  private async resolveEffectiveOwnerId(input: {
+    explicitOwnerId: string | null;
+    actorId: string | null;
+    tenantId: string;
+    branchId: string | null;
+  }): Promise<string | null> {
+    if (input.explicitOwnerId) {
+      return input.explicitOwnerId;
+    }
+
+    if (input.actorId) {
+      return input.actorId;
+    }
+
+    if (!input.tenantId) {
+      return null;
+    }
+
+    if (input.branchId) {
+      const branchMatchedLogin = await this.prisma.userLoginSummary.findFirst({
+        where: {
+          tenantId: input.tenantId,
+          user: {
+            is: {
+              status: 'ACTIVE',
+              defaultBranchId: input.branchId,
+            },
+          },
+        },
+        orderBy: {
+          firstLoggedInAt: 'asc',
+        },
+        select: {
+          userId: true,
+        },
+      });
+
+      if (branchMatchedLogin) {
+        return branchMatchedLogin.userId;
+      }
+    }
+
+    const tenantLogin = await this.prisma.userLoginSummary.findFirst({
+      where: {
+        tenantId: input.tenantId,
+        user: {
+          is: {
+            status: 'ACTIVE',
+          },
+        },
+      },
+      orderBy: {
+        firstLoggedInAt: 'asc',
+      },
+      select: {
+        userId: true,
+      },
+    });
+
+    if (tenantLogin) {
+      return tenantLogin.userId;
+    }
+
+    const fallbackUser = await this.prisma.user.findFirst({
+      where: {
+        tenantId: input.tenantId,
+        status: 'ACTIVE',
+      },
+      orderBy: {
+        createdAt: 'asc',
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    return fallbackUser?.id ?? null;
+  }
+
   private async resolveTargetStageKey(
     existingStageKey: string | null,
     dto: UpdateLeadStatusDto,
@@ -584,5 +786,15 @@ export class LeadsService {
 
     const fallback = await this.tenantConfig.getDefaultStage(tenantId);
     return fallback.key;
+  }
+
+  private toCsv(rows: string[][]): string {
+    return rows
+      .map((row) =>
+        row
+          .map((value) => `"${String(value ?? '').replace(/"/g, '""')}"`)
+          .join(','),
+      )
+      .join('\n');
   }
 }

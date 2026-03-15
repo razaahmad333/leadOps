@@ -111,6 +111,7 @@ export interface PlatformAdminDrawerState {
   openTenantDrawer: (tenantId: string) => void;
   closeTenantDrawer: () => void;
   reloadCurrentTenantDetails: () => Promise<void>;
+  refreshCurrentDrawerData: () => Promise<void>;
   onUsersPageChange: (nextPage: number) => void;
   onAuditPageChange: (nextPage: number) => void;
 
@@ -308,6 +309,22 @@ export function usePlatformAdminDrawer(args: UsePlatformAdminDrawerArgs): Platfo
     await loadTenantDetails(drawerTenantId, drawerUsersPage, drawerAuditPage);
   }, [drawerTenantId, drawerUsersPage, drawerAuditPage, loadTenantDetails]);
 
+  const refreshCurrentDrawerData = useCallback(async (): Promise<void> => {
+    if (!drawerTenantId) {
+      return;
+    }
+
+    if (drawerTab === 'roles') {
+      await Promise.all([
+        loadTenantDetails(drawerTenantId, drawerUsersPage, drawerAuditPage),
+        loadTenantRoles(drawerTenantId),
+      ]);
+      return;
+    }
+
+    await loadTenantDetails(drawerTenantId, drawerUsersPage, drawerAuditPage);
+  }, [drawerAuditPage, drawerTab, drawerTenantId, drawerUsersPage, loadTenantDetails, loadTenantRoles]);
+
   const onUsersPageChange = useCallback((nextPage: number): void => {
     if (!drawerTenantId) {
       return;
@@ -331,12 +348,15 @@ export function usePlatformAdminDrawer(args: UsePlatformAdminDrawerArgs): Platfo
       return;
     }
 
+    const defaultLeadFollowupMinutes = Number.parseInt(tenantSettingsDraft.defaultLeadFollowupMinutes, 10);
     const firstReminderMinutes = Number.parseInt(tenantSettingsDraft.firstReminderMinutes, 10);
     const escalationMinutes = Number.parseInt(tenantSettingsDraft.escalationMinutes, 10);
     const postReportFollowupDays = Number.parseInt(tenantSettingsDraft.postReportFollowupDays, 10);
 
     if (
-      !Number.isFinite(firstReminderMinutes)
+      !Number.isFinite(defaultLeadFollowupMinutes)
+      || defaultLeadFollowupMinutes <= 0
+      || !Number.isFinite(firstReminderMinutes)
       || !Number.isFinite(escalationMinutes)
       || !Number.isFinite(postReportFollowupDays)
     ) {
@@ -367,6 +387,7 @@ export function usePlatformAdminDrawer(args: UsePlatformAdminDrawerArgs): Platfo
         businessStart: tenantSettingsDraft.businessStart,
         businessEnd: tenantSettingsDraft.businessEnd,
         reminderRules: {
+          defaultLeadFollowupMinutes,
           firstReminderMinutes,
           escalationMinutes,
           postReportFollowupDays,
@@ -804,6 +825,7 @@ export function usePlatformAdminDrawer(args: UsePlatformAdminDrawerArgs): Platfo
     openTenantDrawer,
     closeTenantDrawer,
     reloadCurrentTenantDetails,
+    refreshCurrentDrawerData,
     onUsersPageChange,
     onAuditPageChange,
 

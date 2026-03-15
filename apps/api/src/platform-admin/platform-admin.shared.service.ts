@@ -333,13 +333,23 @@ export class PlatformAdminSharedService {
       id: tenant.id,
       name: tenant.name,
       slug: tenant.slug,
-      industryPreset:
-        tenant.config?.industryPreset === IndustryPreset.DIAGNOSTICS_LAB
-          ? IndustryPreset.DIAGNOSTICS_LAB
-          : IndustryPreset.GENERIC,
+      industryPreset: this.parseIndustryPreset(tenant.config?.industryPreset),
       userCount: tenant._count.users,
       createdAt: tenant.createdAt.toISOString(),
     };
+  }
+
+  private parseIndustryPreset(value: string | null | undefined): IndustryPreset {
+    switch (value) {
+      case IndustryPreset.DIAGNOSTICS_LAB:
+      case 'COSMETIC_CLINIC':
+      case 'DENTAL_CLINIC':
+      case 'DOCTOR_OPD_CLINIC':
+        return value as IndustryPreset;
+      case IndustryPreset.GENERIC:
+      default:
+        return IndustryPreset.GENERIC;
+    }
   }
 
   mapPlatformTenantRole(role: {
@@ -430,6 +440,7 @@ export class PlatformAdminSharedService {
         businessEnd: '18:00',
         stages: displayConfig.pipelineConfig.stages.map((stage) => stage.label),
         reminderRules: {
+          defaultLeadFollowupMinutes: displayConfig.followupRules.defaultLeadFollowupMinutes,
           firstReminderMinutes: displayConfig.followupRules.firstReminderMinutes,
           escalationMinutes: displayConfig.followupRules.escalationMinutes,
           postReportFollowupDays: displayConfig.followupRules.postReportFollowupDays,

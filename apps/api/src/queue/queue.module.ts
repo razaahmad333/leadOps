@@ -9,6 +9,6 @@ import { QueueService } from './queue.service';
     BullModule.registerQueue({ name: REPORT_QUEUE }),
   ],
   providers: [QueueService],
-  exports: [QueueService],
+  exports: [QueueService, BullModule],
 })
 export class QueueModule {}

@@ -13,6 +13,10 @@ export function resolveDefaultRouteForPermissions(permissions: string[]): string
     return '/leads';
   }
 
+  if (permissions.includes('faq.view')) {
+    return '/support/questions';
+  }
+
   if (permissions.includes('settings.view')) {
     return '/settings';
   }

@@ -50,6 +50,7 @@ async function upsertTenantWithConfig(input: {
       displayConfig,
       stages: displayConfig.pipelineConfig.stages.map((stage) => stage.label),
       reminderRules: {
+        defaultLeadFollowupMinutes: displayConfig.followupRules.defaultLeadFollowupMinutes,
         firstReminderMinutes: displayConfig.followupRules.firstReminderMinutes,
         escalationMinutes: displayConfig.followupRules.escalationMinutes,
         postReportFollowupDays: displayConfig.followupRules.postReportFollowupDays,
@@ -67,6 +68,7 @@ async function upsertTenantWithConfig(input: {
       businessEnd: '18:00',
       stages: displayConfig.pipelineConfig.stages.map((stage) => stage.label),
       reminderRules: {
+        defaultLeadFollowupMinutes: displayConfig.followupRules.defaultLeadFollowupMinutes,
         firstReminderMinutes: displayConfig.followupRules.firstReminderMinutes,
         escalationMinutes: displayConfig.followupRules.escalationMinutes,
         postReportFollowupDays: displayConfig.followupRules.postReportFollowupDays,
