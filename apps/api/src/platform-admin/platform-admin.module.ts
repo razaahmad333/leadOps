@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AccountsModule } from '../accounts/accounts.module';
+import { QueueModule } from '../queue/queue.module';
 import { PlatformAdminController } from './platform-admin.controller';
 import { PlatformAdminReadService } from './platform-admin-read.service';
 import { PlatformAdminRoleOpsService } from './platform-admin-role-ops.service';
@@ -9,7 +10,7 @@ import { PlatformAdminTenantOpsService } from './platform-admin-tenant-ops.servi
 import { PlatformAdminUserOpsService } from './platform-admin-user-ops.service';
 
 @Module({
-  imports: [AccountsModule],
+  imports: [AccountsModule, QueueModule],
   controllers: [PlatformAdminController],
   providers: [
     PlatformAdminService,

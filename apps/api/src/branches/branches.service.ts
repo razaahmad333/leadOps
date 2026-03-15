@@ -29,7 +29,6 @@ export class BranchesService {
 
   async create(dto: CreateBranchDto, actorId?: string): Promise<Branch> {
     const tenantId = getTenantContext()?.tenantId ?? '';
-    await this.accessControl.ensureTenantInitialized(tenantId);
 
     const name = dto.name.trim();
 
@@ -60,6 +59,7 @@ export class BranchesService {
           },
         },
       });
+      await this.accessControl.invalidateTenantUsers(tenantId);
 
       return {
         id: branch.id,
@@ -82,7 +82,6 @@ export class BranchesService {
 
   async update(id: string, dto: UpdateBranchDto, actorId?: string): Promise<Branch> {
     const tenantId = getTenantContext()?.tenantId ?? '';
-    await this.accessControl.ensureTenantInitialized(tenantId);
 
     const existing = await this.prisma.branch.findFirst({
       where: { id, tenantId },
@@ -141,6 +140,7 @@ export class BranchesService {
           metadata: metadata as Prisma.InputJsonValue,
         },
       });
+      await this.accessControl.invalidateTenantUsers(tenantId);
 
       return {
         id: branch.id,

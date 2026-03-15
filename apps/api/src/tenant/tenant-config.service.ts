@@ -66,44 +66,15 @@ export class TenantConfigService {
       throw new NotFoundException('Tenant not found');
     }
 
-    const configRecord =
-      tenant.config ??
-      (await this.prisma.tenantConfig.create({
-        data: {
-          tenantId: tenant.id,
-          industryPreset: IndustryPreset.GENERIC,
-          configVersion: 1,
-          displayConfig: getPresetDisplayConfig(IndustryPreset.GENERIC),
-          timezone: DEFAULT_TENANT_TIMEZONE,
-          businessStart: '09:00',
-          businessEnd: '18:00',
-          stages: ['New', 'Contacted', 'Qualified', 'Pending', 'Won', 'Lost'],
-          reminderRules: {
-            defaultLeadFollowupMinutes: 120,
-            firstReminderMinutes: 30,
-            escalationMinutes: 120,
-            postReportFollowupDays: 3,
-          },
-          templates: [],
-          featureFlags: {
-            aiAssist: true,
-          },
-        },
-      }));
+    if (!tenant.config) {
+      throw new NotFoundException(
+        'Tenant configuration missing. Configure tenant settings before serving requests.',
+      );
+    }
 
+    const configRecord = tenant.config;
     const industryPreset = this.parseIndustryPreset(configRecord.industryPreset);
     const mergedDisplayConfig = this.mergeDisplayConfig(industryPreset, configRecord.displayConfig);
-
-    await this.persistDisplayConfigIfNeeded(
-      tenant,
-      configRecord.displayConfig,
-      mergedDisplayConfig,
-      industryPreset,
-      configRecord.configVersion,
-      configRecord.timezone,
-      configRecord.businessStart,
-      configRecord.businessEnd,
-    );
 
     const profile: TenantProfile = {
       tenantId: tenant.id,
@@ -559,16 +530,20 @@ export class TenantConfigService {
     businessStart: string,
     businessEnd: string,
   ): Promise<void> {
+    if (!tenant.config) {
+      throw new NotFoundException('Tenant config not found');
+    }
+
     const stored = rawDisplayConfig ? JSON.stringify(rawDisplayConfig) : null;
     const merged = JSON.stringify(mergedDisplayConfig);
 
-    if (stored === merged && tenant.config) {
+    if (stored === merged) {
       return;
     }
 
-    await this.prisma.tenantConfig.upsert({
+    await this.prisma.tenantConfig.update({
       where: { tenantId: tenant.id },
-      update: {
+      data: {
         industryPreset,
         displayConfig: mergedDisplayConfig,
         configVersion,
@@ -582,24 +557,6 @@ export class TenantConfigService {
           escalationMinutes: mergedDisplayConfig.followupRules.escalationMinutes,
           postReportFollowupDays: mergedDisplayConfig.followupRules.postReportFollowupDays,
         },
-        featureFlags: mergedDisplayConfig.featureFlags,
-      },
-      create: {
-        tenantId: tenant.id,
-        industryPreset,
-        displayConfig: mergedDisplayConfig,
-        configVersion,
-        timezone,
-        businessStart,
-        businessEnd,
-        stages: mergedDisplayConfig.pipelineConfig.stages.map((stage) => stage.label),
-        reminderRules: {
-          defaultLeadFollowupMinutes: mergedDisplayConfig.followupRules.defaultLeadFollowupMinutes,
-          firstReminderMinutes: mergedDisplayConfig.followupRules.firstReminderMinutes,
-          escalationMinutes: mergedDisplayConfig.followupRules.escalationMinutes,
-          postReportFollowupDays: mergedDisplayConfig.followupRules.postReportFollowupDays,
-        },
-        templates: [],
         featureFlags: mergedDisplayConfig.featureFlags,
       },
     });
@@ -619,14 +576,18 @@ export class TenantConfigService {
       throw new NotFoundException('Tenant not found');
     }
 
-    const configVersion = tenant.config?.configVersion ?? 1;
-    const timezone = tenant.config?.timezone ?? DEFAULT_TENANT_TIMEZONE;
-    const businessStart = tenant.config?.businessStart ?? '09:00';
-    const businessEnd = tenant.config?.businessEnd ?? '18:00';
+    if (!tenant.config) {
+      throw new NotFoundException('Tenant config not found');
+    }
+
+    const configVersion = tenant.config.configVersion;
+    const timezone = tenant.config.timezone;
+    const businessStart = tenant.config.businessStart;
+    const businessEnd = tenant.config.businessEnd;
 
     await this.persistDisplayConfigIfNeeded(
       tenant,
-      tenant.config?.displayConfig,
+      tenant.config.displayConfig,
       input.displayConfig,
       input.industryPreset,
       configVersion,

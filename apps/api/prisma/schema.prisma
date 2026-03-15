@@ -45,6 +45,11 @@ model Tenant {
   branches       Branch[]
   loginSummaries UserLoginSummary[]
   faqQuestions   FaqQuestion[]
+  dashboardBranchMetrics DashboardBranchMetric[]
+  dashboardBranchStageStatusCounts DashboardBranchStageStatusCount[]
+  dashboardBranchSourceCounts DashboardBranchSourceCount[]
+  dashboardBranchDailyCounts DashboardBranchDailyCount[]
+  dashboardProjectionStates DashboardProjectionState[]
 
   @@map("tenants")
 }
@@ -380,4 +385,90 @@ model WebhookMessage {
   @@unique([provider, messageId])
   @@index([tenantId, provider])
   @@map("webhook_messages")
+}
+
+model DashboardBranchMetric {
+  id               String   @id @default(uuid())
+  tenantId         String   @map("tenant_id")
+  branchId         String?  @map("branch_id")
+  scopeKey         String   @map("scope_key")
+  newCount         Int      @default(0) @map("new_count")
+  pendingCount     Int      @default(0) @map("pending_count")
+  wonCount         Int      @default(0) @map("won_count")
+  lostCount        Int      @default(0) @map("lost_count")
+  activeCount      Int      @default(0) @map("active_count")
+  pendingFollowups Int      @default(0) @map("pending_followups")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, scopeKey])
+  @@index([tenantId, branchId])
+  @@map("dashboard_branch_metrics")
+}
+
+model DashboardBranchStageStatusCount {
+  id        String   @id @default(uuid())
+  tenantId  String   @map("tenant_id")
+  branchId  String?  @map("branch_id")
+  scopeKey  String   @map("scope_key")
+  stageKey  String   @map("stage_key")
+  status    String
+  count     Int      @default(0)
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, scopeKey, stageKey, status])
+  @@index([tenantId, branchId])
+  @@map("dashboard_branch_stage_status_counts")
+}
+
+model DashboardBranchSourceCount {
+  id        String   @id @default(uuid())
+  tenantId  String   @map("tenant_id")
+  branchId  String?  @map("branch_id")
+  scopeKey  String   @map("scope_key")
+  source    String
+  count     Int      @default(0)
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, scopeKey, source])
+  @@index([tenantId, branchId])
+  @@map("dashboard_branch_source_counts")
+}
+
+model DashboardBranchDailyCount {
+  id                 String   @id @default(uuid())
+  tenantId           String   @map("tenant_id")
+  branchId           String?  @map("branch_id")
+  scopeKey           String   @map("scope_key")
+  metricDate         DateTime @map("metric_date") @db.Date
+  leadsCreated       Int      @default(0) @map("leads_created")
+  bookingsMarked     Int      @default(0) @map("bookings_marked")
+  followupsCompleted Int      @default(0) @map("followups_completed")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, scopeKey, metricDate])
+  @@index([tenantId, branchId, metricDate])
+  @@map("dashboard_branch_daily_counts")
+}
+
+model DashboardProjectionState {
+  id         String   @id @default(uuid())
+  tenantId   String   @map("tenant_id")
+  branchId   String?  @map("branch_id")
+  scopeKey   String   @map("scope_key")
+  refreshedAt DateTime @map("refreshed_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, scopeKey])
+  @@index([tenantId, branchId, refreshedAt])
+  @@map("dashboard_projection_state")
 }

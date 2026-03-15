@@ -11,7 +11,7 @@ const config: Config = {
   coverageDirectory: '../coverage',
   testEnvironment: 'node',
   moduleNameMapper: {
-    '^@leadops/shared$': '<rootDir>/../../packages/shared/src/index.ts',
+    '^@leadops/shared$': '<rootDir>/../../../packages/shared/src/index.ts',
   },
 };
 

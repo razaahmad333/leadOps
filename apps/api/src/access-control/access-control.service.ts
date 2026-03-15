@@ -1,4 +1,11 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  Optional,
+} from '@nestjs/common';
 import {
   AuthUser,
   BranchScopeType,
@@ -9,63 +16,131 @@ import {
 } from '@leadops/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { buildBranchScopeSummary } from '../common/utils/user-access.util';
-import { TenantConfigService } from '../tenant/tenant-config.service';
 import { getTenantContext } from '../tenant/tenant.store';
+import { AuthUserCacheService } from './auth-user-cache.service';
 import {
   getAdminRoleName,
   getAllPermissionKeys,
-  getDefaultBranchNames,
   getDefaultRoleTemplates,
   getLegacyRoleTemplateName,
   PERMISSION_CATALOG,
 } from './permission-catalog';
 
-interface BasicUserRecord {
-  id: string;
-  tenantId: string;
-  role: string;
-  isTenantAdmin: boolean;
+interface BuildAuthUserOptions {
+  includeAvailableTenants?: boolean;
 }
 
 @Injectable()
 export class AccessControlService {
-  private readonly authUserCache = new Map<string, Promise<AuthUser>>();
+  private readonly logger = new Logger(AccessControlService.name);
+  private readonly requestAuthUserCache = new Map<string, Promise<AuthUser>>();
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly tenantConfig: TenantConfigService,
+    @Optional() private readonly sharedAuthUserCache?: AuthUserCacheService,
   ) {}
 
-  async buildAuthUser(userId: string, tenantId?: string, requestId?: string): Promise<AuthUser> {
+  async buildAuthUser(
+    userId: string,
+    tenantId?: string,
+    requestId?: string,
+    options?: BuildAuthUserOptions,
+  ): Promise<AuthUser> {
     const activeTenantId = tenantId ?? getTenantContext(false)?.tenantId;
     if (!activeTenantId || activeTenantId === 'system') {
       throw new ForbiddenException('Tenant context missing for permission resolution');
     }
 
+    const includeAvailableTenants = options?.includeAvailableTenants === true;
     const activeRequestId = requestId ?? getTenantContext(false)?.requestId;
     if (!activeRequestId) {
-      return this.buildAuthUserFresh(userId, activeTenantId);
+      return this.resolveWithSharedAuthCache({
+        userId,
+        tenantId: activeTenantId,
+        includeAvailableTenants,
+      });
     }
 
-    const cacheKey = `${activeRequestId}:${userId}`;
-    const cached = this.authUserCache.get(cacheKey);
+    const requestCacheKey = `${activeRequestId}:${activeTenantId}:${userId}:${includeAvailableTenants ? 'full' : 'slim'}`;
+    const cached = this.requestAuthUserCache.get(requestCacheKey);
     if (cached) {
       return cached;
     }
 
-    const next = this.buildAuthUserFresh(userId, activeTenantId);
-    this.authUserCache.set(cacheKey, next);
+    const next = this.resolveWithSharedAuthCache({
+      userId,
+      tenantId: activeTenantId,
+      includeAvailableTenants,
+      requestId: activeRequestId,
+    });
+    this.requestAuthUserCache.set(requestCacheKey, next);
 
-    if (this.authUserCache.size > 500) {
-      this.authUserCache.clear();
+    if (this.requestAuthUserCache.size > 500) {
+      this.requestAuthUserCache.clear();
     }
 
     return next;
   }
 
-  async listPermissionGroups(): Promise<PermissionGroup[]> {
-    await this.ensurePermissionCatalog();
+  async invalidateTenantMembership(userId: string, tenantId: string): Promise<void> {
+    await this.invalidateMembershipCacheEntries([{ userId, tenantId }]);
+  }
 
+  async invalidateAccountMemberships(accountId: string): Promise<void> {
+    const memberships = await this.prisma.user.findMany({
+      where: { accountId },
+      select: {
+        id: true,
+        tenantId: true,
+      },
+    });
+
+    await this.invalidateMembershipCacheEntries(
+      memberships.map((membership) => ({
+        userId: membership.id,
+        tenantId: membership.tenantId,
+      })),
+    );
+  }
+
+  async invalidateUsersAssignedToRole(roleId: string): Promise<void> {
+    const users = await this.prisma.userRole.findMany({
+      where: { roleId },
+      include: {
+        user: {
+          select: {
+            id: true,
+            tenantId: true,
+          },
+        },
+      },
+    });
+
+    await this.invalidateMembershipCacheEntries(
+      users.map((entry) => ({
+        userId: entry.user.id,
+        tenantId: entry.user.tenantId,
+      })),
+    );
+  }
+
+  async invalidateTenantUsers(tenantId: string): Promise<void> {
+    const users = await this.prisma.user.findMany({
+      where: { tenantId },
+      select: {
+        id: true,
+      },
+    });
+
+    await this.invalidateMembershipCacheEntries(
+      users.map((user) => ({
+        userId: user.id,
+        tenantId,
+      })),
+    );
+  }
+
+  async listPermissionGroups(): Promise<PermissionGroup[]> {
     const records = await this.prisma.permission.findMany({
       orderBy: [{ group: 'asc' }, { key: 'asc' }],
     });
@@ -87,17 +162,69 @@ export class AccessControlService {
     return [...grouped.values()];
   }
 
-  async ensureTenantInitialized(tenantId: string): Promise<void> {
-    const profile = await this.tenantConfig.getTenantProfile(tenantId);
+  async provisionPermissionCatalog(): Promise<void> {
+    for (const permission of PERMISSION_CATALOG) {
+      await this.prisma.permission.upsert({
+        where: { key: permission.key },
+        update: {
+          description: permission.description,
+          group: permission.group,
+        },
+        create: permission,
+      });
+    }
+  }
 
-    await this.ensurePermissionCatalog();
-    await this.ensureTenantRoles(tenantId, profile.industryPreset);
-    await this.ensureTenantBranches(tenantId, profile.industryPreset);
+  async provisionTenantRbac(tenantId: string, preset?: IndustryPreset): Promise<void> {
+    const activePreset = preset ?? (await this.resolveTenantPresetForRbac(tenantId));
+
+    await this.provisionPermissionCatalog();
+    await this.provisionTenantRoles(tenantId, activePreset);
+  }
+
+  async validateTenantRbacBaseline(tenantId: string, preset?: IndustryPreset): Promise<void> {
+    const activePreset = preset ?? (await this.resolveTenantPresetForRbac(tenantId));
+    const missingRoleNames = await this.resolveMissingSystemRoleNames(tenantId, activePreset);
+    if (missingRoleNames.length > 0) {
+      throw new ForbiddenException(
+        `Tenant RBAC baseline missing required system roles: ${missingRoleNames.join(', ')}`,
+      );
+    }
+  }
+
+  async validateStartupRbacBaseline(): Promise<void> {
+    const permissionCount = await this.prisma.permission.count();
+    const errors: string[] = [];
+
+    if (permissionCount <= 0) {
+      errors.push('permission catalog is empty');
+    }
+
+    const tenants = await this.prisma.tenant.findMany({
+      select: {
+        id: true,
+        slug: true,
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    for (const tenant of tenants) {
+      try {
+        await this.validateTenantRbacBaseline(tenant.id);
+      } catch (error: unknown) {
+        const reason = error instanceof Error ? error.message : 'unknown error';
+        errors.push(`tenant ${tenant.slug} (${tenant.id}): ${reason}`);
+      }
+    }
+
+    if (errors.length > 0) {
+      throw new Error(
+        `RBAC baseline validation failed.\n- ${errors.join('\n- ')}\nRun: pnpm --filter @leadops/api rbac:bootstrap`,
+      );
+    }
   }
 
   async listTenantBranches(tenantId: string, options?: { includeInactive?: boolean }) {
-    await this.ensureTenantInitialized(tenantId);
-
     return this.prisma.branch.findMany({
       where: {
         tenantId,
@@ -108,8 +235,7 @@ export class AccessControlService {
   }
 
   async getTenantAdminRole(tenantId: string, preset?: IndustryPreset) {
-    const activePreset = preset ?? (await this.tenantConfig.getTenantProfile(tenantId)).industryPreset;
-    await this.ensureTenantInitialized(tenantId);
+    const activePreset = preset ?? (await this.resolveTenantPresetForRbac(tenantId));
 
     return this.prisma.permissionRole.findUnique({
       where: {
@@ -128,9 +254,7 @@ export class AccessControlService {
     isTenantAdmin: boolean,
     preset?: IndustryPreset,
   ): Promise<void> {
-    await this.ensureTenantInitialized(tenantId);
-
-    const activePreset = preset ?? (await this.tenantConfig.getTenantProfile(tenantId)).industryPreset;
+    const activePreset = preset ?? (await this.resolveTenantPresetForRbac(tenantId));
     const uniqueRoleIds = [...new Set(roleIds)];
     const scopedRoles =
       uniqueRoleIds.length === 0
@@ -150,9 +274,17 @@ export class AccessControlService {
 
     if (isTenantAdmin) {
       const adminRole = await this.getTenantAdminRole(tenantId, activePreset);
-      if (adminRole) {
-        nextRoleIds.add(adminRole.id);
+      if (!adminRole) {
+        throw new ForbiddenException(
+          `Tenant RBAC baseline missing required system role: ${getAdminRoleName(activePreset)}`,
+        );
       }
+
+      nextRoleIds.add(adminRole.id);
+    }
+
+    if (!isTenantAdmin && nextRoleIds.size === 0) {
+      throw new BadRequestException('At least one role must be assigned for non-admin users');
     }
 
     await this.prisma.userRole.deleteMany({ where: { userId } });
@@ -163,6 +295,45 @@ export class AccessControlService {
         skipDuplicates: true,
       });
     }
+
+    await this.invalidateTenantMembership(userId, tenantId);
+  }
+
+  async resolveDefaultRoleIdsForUser(
+    tenantId: string,
+    options: {
+      legacyRole: Role;
+      isTenantAdmin: boolean;
+      preset?: IndustryPreset;
+    },
+  ): Promise<string[]> {
+    if (options.isTenantAdmin) {
+      return [];
+    }
+
+    const activePreset = options.preset ?? (await this.resolveTenantPresetForRbac(tenantId));
+    const preferredRoleName = getLegacyRoleTemplateName(
+      activePreset,
+      options.legacyRole === Role.OWNER ? Role.OWNER : Role.STAFF,
+    );
+
+    const role = await this.prisma.permissionRole.findUnique({
+      where: {
+        tenantId_name: {
+          tenantId,
+          name: preferredRoleName,
+        },
+      },
+      select: { id: true },
+    });
+
+    if (!role) {
+      throw new ForbiddenException(
+        `Tenant RBAC baseline missing default role: ${preferredRoleName}`,
+      );
+    }
+
+    return [role.id];
   }
 
   async setUserBranchScope(
@@ -177,6 +348,7 @@ export class AccessControlService {
   ): Promise<void> {
     if (!input || input.scopeType === BranchScopeType.ALL_BRANCHES) {
       await this.prisma.userBranchScope.deleteMany({ where: { userId } });
+      await this.invalidateTenantMembership(userId, tenantId);
       return;
     }
 
@@ -204,6 +376,8 @@ export class AccessControlService {
         skipDuplicates: true,
       });
     }
+
+    await this.invalidateTenantMembership(userId, tenantId);
   }
 
   determineLegacyRole(input: {
@@ -223,60 +397,12 @@ export class AccessControlService {
     return Role.STAFF;
   }
 
-  async ensureLegacyAssignment(input: BasicUserRecord): Promise<void> {
-    await this.ensureTenantInitialized(input.tenantId);
-
-    const roleCount = await this.prisma.userRole.count({
-      where: { userId: input.id },
-    });
-
-    if (roleCount > 0) {
-      return;
-    }
-
-    const preset = (await this.tenantConfig.getTenantProfile(input.tenantId)).industryPreset;
-    const defaultRoleName = input.isTenantAdmin
-      ? getAdminRoleName(preset)
-      : getLegacyRoleTemplateName(
-          preset,
-          input.role === Role.OWNER ? Role.OWNER : Role.STAFF,
-        );
-
-    const targetRole = await this.prisma.permissionRole.findUnique({
-      where: {
-        tenantId_name: {
-          tenantId: input.tenantId,
-          name: defaultRoleName,
-        },
-      },
-    });
-
-    if (!targetRole) {
-      return;
-    }
-
-    await this.setUserRoles(input.id, input.tenantId, [targetRole.id], input.isTenantAdmin, preset);
-  }
-
-  private async buildAuthUserFresh(userId: string, tenantId: string): Promise<AuthUser> {
-    await this.ensureTenantInitialized(tenantId);
-
-    const basicUser = await this.prisma.user.findFirst({
-      where: { id: userId, tenantId },
-      select: {
-        id: true,
-        tenantId: true,
-        role: true,
-        isTenantAdmin: true,
-      },
-    });
-
-    if (!basicUser) {
-      throw new NotFoundException('User not found');
-    }
-
-    await this.ensureLegacyAssignment(basicUser);
-
+  private async buildAuthUserFresh(
+    userId: string,
+    tenantId: string,
+    options?: BuildAuthUserOptions,
+  ): Promise<AuthUser> {
+    const includeAvailableTenants = options?.includeAvailableTenants === true;
     const [allBranches, user] = await Promise.all([
       this.prisma.branch.findMany({
         where: { tenantId, isActive: true },
@@ -309,16 +435,24 @@ export class AccessControlService {
       throw new NotFoundException('User not found');
     }
 
-    const memberships = await this.prisma.user.findMany({
-      where: {
-        accountId: user.accountId,
-        status: UserStatus.ACTIVE,
-      },
-      include: {
-        tenant: true,
-      },
-      orderBy: [{ tenant: { name: 'asc' } }, { createdAt: 'asc' }],
-    });
+    if (!user.isSuperAdmin && !user.isTenantAdmin && user.userRoles.length === 0) {
+      throw new ForbiddenException(
+        'User has no assigned roles. Contact your platform administrator.',
+      );
+    }
+
+    const memberships = includeAvailableTenants
+      ? await this.prisma.user.findMany({
+          where: {
+            accountId: user.accountId,
+            status: UserStatus.ACTIVE,
+          },
+          include: {
+            tenant: true,
+          },
+          orderBy: [{ tenant: { name: 'asc' } }, { createdAt: 'asc' }],
+        })
+      : [];
 
     const allPermissionKeys = getAllPermissionKeys();
     const permissionSet = new Set<string>();
@@ -366,20 +500,58 @@ export class AccessControlService {
     };
   }
 
-  private async ensurePermissionCatalog(): Promise<void> {
-    for (const permission of PERMISSION_CATALOG) {
-      await this.prisma.permission.upsert({
-        where: { key: permission.key },
-        update: {
-          description: permission.description,
-          group: permission.group,
-        },
-        create: permission,
+  private async resolveWithSharedAuthCache(input: {
+    userId: string;
+    tenantId: string;
+    includeAvailableTenants: boolean;
+    requestId?: string;
+  }): Promise<AuthUser> {
+    if (!this.sharedAuthUserCache) {
+      return this.buildAuthUserFresh(input.userId, input.tenantId, {
+        includeAvailableTenants: input.includeAvailableTenants,
       });
     }
+
+    const cacheKey = this.sharedAuthUserCache.buildCacheKey(
+      input.tenantId,
+      input.userId,
+      input.includeAvailableTenants,
+    );
+    const outcome = await this.sharedAuthUserCache.getOrLoad(cacheKey, () =>
+      this.buildAuthUserFresh(input.userId, input.tenantId, {
+        includeAvailableTenants: input.includeAvailableTenants,
+      }),
+    );
+
+    this.logger.debug(
+      `[auth-cache] requestId=${input.requestId ?? 'n/a'} source=${outcome.source} hit=${outcome.stats.hit} miss=${outcome.stats.miss} l1=${outcome.stats.l1} l2=${outcome.stats.l2} db=${outcome.stats.db} singleflight=${outcome.stats.singleflight} error=${outcome.stats.error}`,
+    );
+
+    return outcome.value;
   }
 
-  private async ensureTenantRoles(tenantId: string, preset: IndustryPreset): Promise<void> {
+  private async invalidateMembershipCacheEntries(entries: Array<{ userId: string; tenantId: string }>): Promise<void> {
+    if (entries.length === 0) {
+      return;
+    }
+
+    this.requestAuthUserCache.clear();
+
+    if (!this.sharedAuthUserCache) {
+      return;
+    }
+
+    const keys = new Set<string>();
+    for (const entry of entries) {
+      for (const key of this.sharedAuthUserCache.membershipKeys(entry.tenantId, entry.userId)) {
+        keys.add(key);
+      }
+    }
+
+    await this.sharedAuthUserCache.invalidateKeys([...keys]);
+  }
+
+  private async provisionTenantRoles(tenantId: string, preset: IndustryPreset): Promise<void> {
     const permissionRecords = await this.prisma.permission.findMany({
       where: {
         key: { in: getAllPermissionKeys() },
@@ -428,19 +600,47 @@ export class AccessControlService {
     }
   }
 
-  private async ensureTenantBranches(tenantId: string, preset: IndustryPreset): Promise<void> {
-    const branchCount = await this.prisma.branch.count({ where: { tenantId } });
-    if (branchCount > 0) {
-      return;
+  private async resolveTenantPresetForRbac(tenantId: string): Promise<IndustryPreset> {
+    const config = await this.prisma.tenantConfig.findUnique({
+      where: { tenantId },
+      select: { industryPreset: true },
+    });
+
+    if (!config) {
+      throw new ForbiddenException('Tenant configuration missing for RBAC resolution');
     }
 
-    for (const name of getDefaultBranchNames(preset)) {
-      await this.prisma.branch.create({
-        data: {
-          tenantId,
-          name,
-        },
-      });
+    return this.parseIndustryPreset(config.industryPreset);
+  }
+
+  private async resolveMissingSystemRoleNames(
+    tenantId: string,
+    preset: IndustryPreset,
+  ): Promise<string[]> {
+    const requiredNames = getDefaultRoleTemplates(preset)
+      .filter((template) => template.isSystem)
+      .map((template) => template.name);
+
+    if (requiredNames.length === 0) {
+      return [];
     }
+
+    const existing = await this.prisma.permissionRole.findMany({
+      where: {
+        tenantId,
+        isSystem: true,
+        name: { in: requiredNames },
+      },
+      select: { name: true },
+    });
+
+    const existingNames = new Set(existing.map((role) => role.name));
+    return requiredNames.filter((name) => !existingNames.has(name));
+  }
+
+  private parseIndustryPreset(value: string): IndustryPreset {
+    return (Object.values(IndustryPreset) as string[]).includes(value)
+      ? (value as IndustryPreset)
+      : IndustryPreset.GENERIC;
   }
 }

@@ -471,8 +471,6 @@ export class PlatformAdminSharedService {
       throw new BadRequestException('Tenant not found');
     }
 
-    await this.accessControl.ensureTenantInitialized(input.tenantId);
-
     const normalizedEmail = input.email.trim().toLowerCase();
     const normalizedPhone = normalizePhoneNumber(input.phone) || null;
     const account = await this.accountIdentity.findOrCreateAccount({
@@ -495,6 +493,11 @@ export class PlatformAdminSharedService {
     }
 
     const role = input.isTenantAdmin ? Role.OWNER : Role.STAFF;
+    const defaultRoleIds = await this.accessControl.resolveDefaultRoleIdsForUser(input.tenantId, {
+      legacyRole: role,
+      isTenantAdmin: input.isTenantAdmin ?? false,
+    });
+
     const user = await this.prisma.user.create({
       data: {
         tenantId: input.tenantId,
@@ -514,19 +517,14 @@ export class PlatformAdminSharedService {
     await this.accessControl.setUserRoles(
       user.id,
       input.tenantId,
-      [],
+      defaultRoleIds,
       input.isTenantAdmin ?? false,
     );
     await this.accessControl.setUserBranchScope(user.id, input.tenantId, {
       scopeType: BranchScopeType.ALL_BRANCHES,
       branchIds: [],
     });
-    await this.accessControl.ensureLegacyAssignment({
-      id: user.id,
-      tenantId: user.tenantId,
-      role: user.role,
-      isTenantAdmin: user.isTenantAdmin,
-    });
+    await this.accessControl.invalidateAccountMemberships(account.id);
 
     await this.prisma.tenantAuditEvent.create({
       data: {

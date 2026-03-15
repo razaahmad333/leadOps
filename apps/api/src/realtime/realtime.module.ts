@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
+import { QueueModule } from '../queue/queue.module';
 import { RealtimeGateway } from './realtime.gateway';
 import { RealtimePublisherService } from './realtime.publisher.service';
 import { RealtimeRedisBridgeService } from './realtime.redis-bridge.service';
@@ -8,6 +9,7 @@ import { RealtimeRedisBridgeService } from './realtime.redis-bridge.service';
 @Module({
   imports: [
     ConfigModule,
+    QueueModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

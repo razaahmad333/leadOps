@@ -36,21 +36,6 @@ export class UsersService {
 
   async findAll(): Promise<TeamUser[]> {
     const tenantId = getTenantContext()?.tenantId ?? '';
-    await this.accessControl.ensureTenantInitialized(tenantId);
-
-    const basics = await this.prisma.user.findMany({
-      where: { tenantId },
-      select: {
-        id: true,
-        tenantId: true,
-        role: true,
-        isTenantAdmin: true,
-      },
-    });
-
-    for (const user of basics) {
-      await this.accessControl.ensureLegacyAssignment(user);
-    }
 
     const users = await this.prisma.user.findMany({
       where: { tenantId },
@@ -76,7 +61,6 @@ export class UsersService {
 
   async create(dto: CreateUserDto, actorId?: string): Promise<TeamUser> {
     const tenantId = getTenantContext()?.tenantId ?? '';
-    await this.accessControl.ensureTenantInitialized(tenantId);
     const normalizedEmail = dto.email.trim().toLowerCase();
     const normalizedPhone = normalizePhoneNumber(dto.phone) || null;
 
@@ -146,10 +130,19 @@ export class UsersService {
     }
 
     const resolvedRoleIds = resolveRoleIds(dto.roleId, dto.roleIds);
+    const effectiveRoleIds =
+      resolvedRoleIds.length > 0
+      || (dto.isTenantAdmin ?? false)
+        ? resolvedRoleIds
+        : await this.accessControl.resolveDefaultRoleIdsForUser(tenantId, {
+            legacyRole: Role.STAFF,
+            isTenantAdmin: false,
+          });
+
     await this.accessControl.setUserRoles(
       user.id,
       tenantId,
-      resolvedRoleIds,
+      effectiveRoleIds,
       dto.isTenantAdmin ?? false,
     );
     await this.accessControl.setUserBranchScope(user.id, tenantId, normalizedBranchScope);
@@ -182,6 +175,8 @@ export class UsersService {
       },
     });
 
+    await this.accessControl.invalidateAccountMemberships(account.id);
+
     await this.prisma.tenantAuditEvent.create({
       data: {
         tenantId,
@@ -202,7 +197,6 @@ export class UsersService {
 
   async update(id: string, dto: UpdateUserDto, actorId: string): Promise<TeamUser> {
     const tenantId = getTenantContext()?.tenantId ?? '';
-    await this.accessControl.ensureTenantInitialized(tenantId);
 
     const existing = await this.prisma.user.findFirst({
       where: { id, tenantId },
@@ -287,6 +281,8 @@ export class UsersService {
       },
     });
 
+    await this.accessControl.invalidateTenantMembership(id, tenantId);
+
     if (dto.phone !== undefined) {
       await this.syncAccountPhone(existing.accountId, normalizedPhone);
     }
@@ -360,26 +356,12 @@ export class UsersService {
       where: { accountId },
       data: { phone },
     });
+
+    await this.accessControl.invalidateAccountMemberships(accountId);
   }
 
   async findOne(id: string): Promise<TeamUser> {
     const tenantId = getTenantContext()?.tenantId ?? '';
-    const basicUser = await this.prisma.user.findFirst({
-      where: { id, tenantId },
-      select: {
-        id: true,
-        tenantId: true,
-        role: true,
-        isTenantAdmin: true,
-      },
-    });
-
-    if (!basicUser) {
-      throw new NotFoundException('User not found');
-    }
-
-    await this.accessControl.ensureLegacyAssignment(basicUser);
-
     const [allBranches, user] = await Promise.all([
       this.accessControl.listTenantBranches(tenantId),
       this.prisma.user.findFirst({

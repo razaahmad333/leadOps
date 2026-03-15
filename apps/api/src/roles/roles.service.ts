@@ -18,7 +18,6 @@ export class RolesService {
 
   async findAll(): Promise<RoleSummary[]> {
     const tenantId = getTenantContext()?.tenantId ?? '';
-    await this.accessControl.ensureTenantInitialized(tenantId);
 
     const roles = await this.prisma.permissionRole.findMany({
       where: {
@@ -61,7 +60,6 @@ export class RolesService {
 
   async create(dto: CreateRoleDto): Promise<RoleDetail> {
     const tenantId = getTenantContext()?.tenantId ?? '';
-    await this.accessControl.ensureTenantInitialized(tenantId);
 
     const permissions = await this.prisma.permission.findMany({
       where: { key: { in: dto.permissionKeys } },
@@ -156,6 +154,8 @@ export class RolesService {
           skipDuplicates: true,
         });
       }
+
+      await this.accessControl.invalidateUsersAssignedToRole(role.id);
     }
 
     return this.findOne(id);
@@ -176,7 +176,6 @@ export class RolesService {
 
   private async getTenantRole(id: string) {
     const tenantId = getTenantContext()?.tenantId ?? '';
-    await this.accessControl.ensureTenantInitialized(tenantId);
 
     const role = await this.prisma.permissionRole.findFirst({
       where: {

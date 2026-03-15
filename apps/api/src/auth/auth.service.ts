@@ -80,7 +80,9 @@ export class AuthService {
 
   me(userId: string): Promise<AuthUser> {
     const tenantContext = getTenantContext(false);
-    return this.accessControl.buildAuthUser(userId, tenantContext?.tenantId, tenantContext?.requestId);
+    return this.accessControl.buildAuthUser(userId, tenantContext?.tenantId, tenantContext?.requestId, {
+      includeAvailableTenants: true,
+    });
   }
 
   private async buildAuthFlowForAccount(accountId: string): Promise<AuthFlowResponse> {
@@ -116,6 +118,7 @@ export class AuthService {
       user.id,
       user.tenantId,
       tenantContext?.requestId,
+      { includeAvailableTenants: true },
     );
 
     return {

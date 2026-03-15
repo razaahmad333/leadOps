@@ -12,13 +12,17 @@ import {
 import { Permissions } from '../access-control/permissions.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
+import { QueueService } from '../queue/queue.service';
 import { TenantConfigService } from '../tenant/tenant-config.service';
 
 @ApiTags('settings')
 @ApiBearerAuth()
 @Controller('settings')
 export class SettingsController {
-  constructor(private readonly tenantConfig: TenantConfigService) {}
+  constructor(
+    private readonly tenantConfig: TenantConfigService,
+    private readonly queue: QueueService,
+  ) {}
 
   @Get()
   @Permissions('settings.view')
@@ -35,7 +39,7 @@ export class SettingsController {
     @Body(new ZodValidationPipe(UpdateTenantSettingsSchema)) dto: UpdateTenantSettingsDto,
   ): Promise<TenantSettings> {
     this.ensureTenantAdmin(user);
-    return this.tenantConfig.updateSettings(dto, user.tenantId, user.id);
+    return this.updateTenantSettingsAndRebuildDashboard(user, dto);
   }
 
   @Get('intake-config')
@@ -61,5 +65,22 @@ export class SettingsController {
     if (!user.isTenantAdmin && !user.isSuperAdmin) {
       throw new ForbiddenException('TENANT_ADMIN access required');
     }
+  }
+
+  private async updateTenantSettingsAndRebuildDashboard(
+    user: AuthUser,
+    dto: UpdateTenantSettingsDto,
+  ): Promise<TenantSettings> {
+    const before = await this.tenantConfig.getSettings(user.tenantId);
+    const updated = await this.tenantConfig.updateSettings(dto, user.tenantId, user.id);
+
+    if (dto.timezone && dto.timezone.trim() !== before.timezone) {
+      await this.queue.enqueueDashboardTenantRebuild({
+        tenantId: user.tenantId,
+        reason: 'tenant.settings.timezone.updated',
+      });
+    }
+
+    return updated;
   }
 }

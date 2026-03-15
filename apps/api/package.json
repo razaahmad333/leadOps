@@ -12,6 +12,7 @@
     "test": "jest --passWithNoTests",
     "test:watch": "jest --watch",
     "perf:followups": "ts-node --project scripts/tsconfig.scripts.json scripts/followup-query-baseline.ts",
+    "rbac:bootstrap": "ts-node --project scripts/tsconfig.scripts.json -r tsconfig-paths/register scripts/bootstrap-rbac.ts",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:seed": "ts-node --project prisma/tsconfig.seed.json -r tsconfig-paths/register prisma/seed.ts",

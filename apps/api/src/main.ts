@@ -5,6 +5,7 @@ import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify
 import { IoAdapter } from '@nestjs/platform-socket.io';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
+import { AccessControlService } from './access-control/access-control.service';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { isAllowedOrigin, resolveConfiguredOrigins } from './common/security/origin.util';
 
@@ -33,6 +34,7 @@ async function bootstrap(): Promise<void> {
   );
 
   const logger = new Logger('Bootstrap');
+  const accessControl = app.get(AccessControlService);
   const allowLocalhost = process.env.NODE_ENV !== 'production';
   const configuredOrigins = resolveConfiguredOrigins(process.env.CORS_ORIGIN);
 
@@ -105,6 +107,8 @@ async function bootstrap(): Promise<void> {
   }
 
   const port = parseInt(process.env.PORT ?? '3000', 10);
+  await accessControl.validateStartupRbacBaseline();
+  logger.log('RBAC baseline validation passed');
   await app.listen(port, '0.0.0.0');
 
   logger.log(`API running at http://localhost:${port}`);

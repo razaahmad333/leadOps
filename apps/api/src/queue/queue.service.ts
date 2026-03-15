@@ -2,6 +2,12 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import {
+  ANALYTICS_QUEUE,
+  DASHBOARD_ANALYTICS_JOB_KINDS,
+  DASHBOARD_ANALYTICS_JOB_NAMES,
+  type DashboardAnalyticsJob,
+  type DashboardRebuildTenantJob,
+  type DashboardRefreshBranchJob,
   DailyReportJob,
   FOLLOWUP_NOTIFICATION_JOB_KINDS,
   FOLLOWUP_NOTIFICATION_JOB_NAMES,
@@ -11,6 +17,9 @@ import {
 } from '@leadops/shared';
 import { TenantConfigService } from '../tenant/tenant-config.service';
 
+const DASHBOARD_REFRESH_DEBOUNCE_MS = 500;
+const UNASSIGNED_SCOPE_KEY = '__unassigned__';
+
 @Injectable()
 export class QueueService implements OnModuleInit {
   private readonly logger = new Logger(QueueService.name);
@@ -18,6 +27,7 @@ export class QueueService implements OnModuleInit {
   constructor(
     @InjectQueue(REMINDER_QUEUE) private readonly reminderQueue: Queue<FollowupNotificationJob>,
     @InjectQueue(REPORT_QUEUE) private readonly reportQueue: Queue<DailyReportJob>,
+    @InjectQueue(ANALYTICS_QUEUE) private readonly analyticsQueue: Queue<DashboardAnalyticsJob>,
     private readonly tenantConfig: TenantConfigService,
   ) {}
 
@@ -82,6 +92,53 @@ export class QueueService implements OnModuleInit {
     });
 
     this.logger.log(`Queued daily summary for ${payload.tenantId} (${payload.reportDate})`);
+  }
+
+  async enqueueDashboardBranchRefresh(input: {
+    tenantId: string;
+    branchId?: string | null;
+    reason: string;
+    occurredAt?: string;
+  }): Promise<void> {
+    const branchId = input.branchId ?? null;
+    const payload: DashboardRefreshBranchJob = {
+      kind: DASHBOARD_ANALYTICS_JOB_KINDS.REFRESH_BRANCH,
+      tenantId: input.tenantId,
+      branchId,
+      reason: input.reason,
+      occurredAt: input.occurredAt ?? new Date().toISOString(),
+    };
+
+    const scopeKey = branchId ?? UNASSIGNED_SCOPE_KEY;
+    const jobId = `dashboard-refresh-${payload.tenantId}-${scopeKey}`;
+
+    await this.analyticsQueue.add(DASHBOARD_ANALYTICS_JOB_NAMES.REFRESH_BRANCH, payload, {
+      delay: DASHBOARD_REFRESH_DEBOUNCE_MS,
+      removeOnComplete: true,
+      removeOnFail: 200,
+      jobId,
+    });
+  }
+
+  async enqueueDashboardTenantRebuild(input: {
+    tenantId: string;
+    reason: string;
+    occurredAt?: string;
+  }): Promise<void> {
+    const payload: DashboardRebuildTenantJob = {
+      kind: DASHBOARD_ANALYTICS_JOB_KINDS.REBUILD_TENANT,
+      tenantId: input.tenantId,
+      reason: input.reason,
+      occurredAt: input.occurredAt ?? new Date().toISOString(),
+    };
+
+    const jobId = `dashboard-rebuild-${payload.tenantId}`;
+
+    await this.analyticsQueue.add(DASHBOARD_ANALYTICS_JOB_NAMES.REBUILD_TENANT, payload, {
+      removeOnComplete: true,
+      removeOnFail: 200,
+      jobId,
+    });
   }
 
   private async enqueueFollowupJob(payload: FollowupNotificationJob, runAt: Date): Promise<void> {

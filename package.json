@@ -10,6 +10,7 @@
     "format": "prettier --write \"**/*.{ts,tsx,js,json,md}\" --ignore-path .gitignore",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
+    "rbac:bootstrap": "pnpm --filter @leadops/api rbac:bootstrap",
     "db:generate": "pnpm --filter @leadops/api prisma:generate",
     "db:migrate": "pnpm --filter @leadops/api prisma:migrate",
     "db:seed": "pnpm --filter @leadops/api prisma:seed",

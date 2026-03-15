@@ -98,7 +98,7 @@ function InfoHint(props: {
         <CircleHelp className="h-3.5 w-3.5" />
       </button>
       <div
-        className={`pointer-events-none absolute top-8 z-20 hidden w-64 rounded-2xl border border-white/80 bg-background/95 p-3 text-xs leading-5 text-muted-foreground shadow-xl group-hover:block group-focus-within:block ${
+        className={`pointer-events-none absolute top-8 z-20 hidden w-64 max-w-[calc(100vw-2rem)] rounded-2xl border border-white/80 bg-background/95 p-3 text-xs leading-5 text-muted-foreground shadow-xl whitespace-normal break-words group-hover:block group-focus-within:block ${
           align === 'left' ? 'left-0' : 'right-0'
         }`}
       >
@@ -722,7 +722,7 @@ export function DashboardPage(): React.JSX.Element {
                       <InfoHint
                         label={`${card.label} info`}
                         helpText={dashboardCardHelp.get(card.key) ?? 'Current dashboard metric for the visible scope.'}
-                        align="left"
+                        align="right"
                       />
                     </div>
                   </CardHeader>

@@ -38,7 +38,9 @@ export class PermissionsGuard implements CanActivate {
 
     const hydratedUser = user.effectivePermissions.length
       ? user
-      : await this.accessControl.buildAuthUser(user.id, user.tenantId, request.requestId);
+      : await this.accessControl.buildAuthUser(user.id, user.tenantId, request.requestId, {
+        includeAvailableTenants: false,
+      });
 
     const effectivePermissions = new Set(hydratedUser.effectivePermissions);
     const missing = requiredPermissions.filter((permission) => !effectivePermissions.has(permission));

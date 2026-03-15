@@ -210,7 +210,9 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       throw new UnauthorizedException('Invalid access token for realtime session');
     }
 
-    const user = await this.accessControl.buildAuthUser(payload.sub, payload.tenantId);
+    const user = await this.accessControl.buildAuthUser(payload.sub, payload.tenantId, undefined, {
+      includeAvailableTenants: false,
+    });
     if (user.tenantId !== payload.tenantId) {
       throw new UnauthorizedException('Token tenant does not match user tenant');
     }

@@ -8,7 +8,6 @@ import {
   UpdatePlatformUserDto,
   UserStatus,
 } from '@leadops/shared';
-import { Prisma } from '@prisma/client';
 import { AccessControlService } from '../access-control/access-control.service';
 import { AccountIdentityService } from '../accounts/account-identity.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -182,6 +181,10 @@ export class PlatformAdminUserOpsService {
         }
       }
 
+      if (!existing.isSuperAdmin && !nextIsTenantAdmin && nextRoleSet.size === 0) {
+        throw new BadRequestException('At least one role must be assigned for non-admin users');
+      }
+
       nextRoleIds = [...nextRoleSet];
       roleMetadataIds = [...nextRoleSet];
     }
@@ -324,6 +327,14 @@ export class PlatformAdminUserOpsService {
         },
       });
     });
+
+    if (Object.keys(userData).length > 0 || shouldUpdateRoles || shouldUpdateBranchScope) {
+      await this.accessControl.invalidateTenantMembership(userId, existing.tenantId);
+    }
+
+    if (Object.keys(accountData).length > 0) {
+      await this.accessControl.invalidateAccountMemberships(existing.accountId);
+    }
 
     return this.shared.getPlatformAdminUserSummary(userId);
   }

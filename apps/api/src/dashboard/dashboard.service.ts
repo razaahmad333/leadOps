@@ -29,6 +29,11 @@ interface BranchSummary {
   name: string;
 }
 
+const PROJECTION_STALE_MS = 10_000;
+const ALL_BRANCHES_SCOPE_KEY = '__all_branches__';
+const NULL_STAGE_KEY = '__no_stage__';
+const UNKNOWN_SOURCE_KEY = 'unknown';
+
 @Injectable()
 export class DashboardService {
   constructor(
@@ -64,6 +69,52 @@ export class DashboardService {
     const pendingFollowupWhere = this.buildFollowUpWhere(tenantId, branchIds, { done: false });
     const accessibleBranches = await this.loadAccessibleBranches(tenantId, branchIds);
     const shouldCompareBranches = !selectedBranchId && accessibleBranches.length > 1;
+
+    const projectedStats = await this.loadProjectedStatsIfFresh({
+      tenantId,
+      branchIds,
+      now,
+      dayBuckets,
+      shouldCompareBranches,
+    });
+
+    if (projectedStats) {
+      const liveOnly = await this.loadLiveOnlyMetrics({
+        leadScopeWhere,
+        pendingFollowupWhere,
+        start,
+        end,
+        now,
+      });
+
+      const analytics = this.buildProjectedAnalytics({
+        buckets: dayBuckets,
+        displayConfig,
+        industryPreset: profile.industryPreset,
+        projectedStats,
+        overdueFollowups: liveOnly.overdueFollowups,
+        dueTodayFollowups: liveOnly.dueTodayFollowups,
+        escalatedFollowups: liveOnly.escalatedFollowups,
+        completedTodayFollowups: liveOnly.completedTodayFollowups,
+        accessibleBranches,
+        shouldCompareBranches,
+      });
+
+      return {
+        new: projectedStats.newCount,
+        pending: projectedStats.pendingCount,
+        missed: liveOnly.missedFollowups,
+        won: projectedStats.wonCount,
+        lost: projectedStats.lostCount,
+        avgResponseMinutes: liveOnly.avgResponseMinutes,
+        enquiriesToday: projectedStats.enquiriesToday,
+        bookingsToday: projectedStats.bookingsToday,
+        pendingFollowups: projectedStats.pendingFollowups,
+        missedFollowups: liveOnly.missedFollowups,
+        postReportFollowupsDue: liveOnly.postReportFollowupsDue,
+        analytics,
+      };
+    }
 
     const [
       newCount,
@@ -350,6 +401,527 @@ export class DashboardService {
         name: true,
       },
     });
+  }
+
+  private async loadProjectedStatsIfFresh(input: {
+    tenantId: string | undefined;
+    branchIds: string[] | null;
+    now: Date;
+    dayBuckets: DayBucket[];
+    shouldCompareBranches: boolean;
+  }): Promise<{
+    newCount: number;
+    pendingCount: number;
+    wonCount: number;
+    lostCount: number;
+    pendingFollowups: number;
+    enquiriesToday: number;
+    bookingsToday: number;
+    trendPrimaryByDate: Map<string, number>;
+    trendSecondaryByDate: Map<string, number>;
+    trendTertiaryByDate: Map<string, number>;
+    pipelineGroups: Array<{
+      stageKey: string | null;
+      status: string;
+      _count: { _all: number };
+    }>;
+    sourceGroups: Array<{
+      source: string | null;
+      _count: { _all: number };
+    }>;
+    branchMetrics: Array<{
+      branchId: string | null;
+      activeCount: number;
+      pendingFollowups: number;
+    }>;
+  } | null> {
+    const { tenantId, branchIds, now, dayBuckets } = input;
+    if (!tenantId) {
+      return null;
+    }
+
+    const isFresh = await this.isProjectedScopeFresh({
+      tenantId,
+      branchIds,
+      now,
+    });
+
+    if (!isFresh) {
+      return null;
+    }
+
+    const dayStart = dayBuckets[0]?.date;
+    const dayEnd = dayBuckets[dayBuckets.length - 1]?.date;
+    const metricDateFilter = dayStart && dayEnd
+      ? {
+          gte: new Date(`${dayStart}T00:00:00.000Z`),
+          lte: new Date(`${dayEnd}T00:00:00.000Z`),
+        }
+      : undefined;
+
+    const scopeFilter = this.buildProjectedScopeFilter(branchIds);
+
+    const [metricRows, stageRows, sourceRows, dailyRows] = await Promise.all([
+      this.prisma.dashboardBranchMetric.findMany({
+        where: {
+          tenantId,
+          ...scopeFilter,
+        },
+        select: {
+          branchId: true,
+          newCount: true,
+          pendingCount: true,
+          wonCount: true,
+          lostCount: true,
+          activeCount: true,
+          pendingFollowups: true,
+        },
+      }),
+      this.prisma.dashboardBranchStageStatusCount.findMany({
+        where: {
+          tenantId,
+          ...scopeFilter,
+        },
+        select: {
+          stageKey: true,
+          status: true,
+          count: true,
+        },
+      }),
+      this.prisma.dashboardBranchSourceCount.findMany({
+        where: {
+          tenantId,
+          ...scopeFilter,
+        },
+        select: {
+          source: true,
+          count: true,
+        },
+      }),
+      this.prisma.dashboardBranchDailyCount.findMany({
+        where: {
+          tenantId,
+          ...scopeFilter,
+          ...(metricDateFilter ? { metricDate: metricDateFilter } : {}),
+        },
+        select: {
+          metricDate: true,
+          leadsCreated: true,
+          bookingsMarked: true,
+          followupsCompleted: true,
+        },
+      }),
+    ]);
+
+    const dailyPrimary = new Map<string, number>();
+    const dailySecondary = new Map<string, number>();
+    const dailyTertiary = new Map<string, number>();
+
+    for (const row of dailyRows) {
+      const key = this.metricDateKey(row.metricDate);
+      dailyPrimary.set(key, (dailyPrimary.get(key) ?? 0) + row.leadsCreated);
+      dailySecondary.set(key, (dailySecondary.get(key) ?? 0) + row.bookingsMarked);
+      dailyTertiary.set(key, (dailyTertiary.get(key) ?? 0) + row.followupsCompleted);
+    }
+
+    const stageMap = new Map<string, number>();
+    for (const row of stageRows) {
+      const stageKey = row.stageKey === NULL_STAGE_KEY ? null : row.stageKey;
+      const groupKey = `${stageKey ?? '__null__'}|${row.status}`;
+      stageMap.set(groupKey, (stageMap.get(groupKey) ?? 0) + row.count);
+    }
+
+    const pipelineGroups = Array.from(stageMap.entries()).map(([key, count]) => {
+      const [stageToken, status] = key.split('|');
+      return {
+        stageKey: stageToken === '__null__' ? null : stageToken,
+        status,
+        _count: { _all: count },
+      };
+    });
+
+    const sourceMap = new Map<string, number>();
+    for (const row of sourceRows) {
+      const source = row.source === UNKNOWN_SOURCE_KEY ? null : row.source;
+      const sourceKey = source ?? '__unknown__';
+      sourceMap.set(sourceKey, (sourceMap.get(sourceKey) ?? 0) + row.count);
+    }
+
+    const sourceGroups = Array.from(sourceMap.entries()).map(([source, count]) => ({
+      source: source === '__unknown__' ? null : source,
+      _count: { _all: count },
+    }));
+
+    const todayKey = dayBuckets[dayBuckets.length - 1]?.date;
+
+    return {
+      newCount: metricRows.reduce((sum, row) => sum + row.newCount, 0),
+      pendingCount: metricRows.reduce((sum, row) => sum + row.pendingCount, 0),
+      wonCount: metricRows.reduce((sum, row) => sum + row.wonCount, 0),
+      lostCount: metricRows.reduce((sum, row) => sum + row.lostCount, 0),
+      pendingFollowups: metricRows.reduce((sum, row) => sum + row.pendingFollowups, 0),
+      enquiriesToday: todayKey ? (dailyPrimary.get(todayKey) ?? 0) : 0,
+      bookingsToday: todayKey ? (dailySecondary.get(todayKey) ?? 0) : 0,
+      trendPrimaryByDate: dailyPrimary,
+      trendSecondaryByDate: dailySecondary,
+      trendTertiaryByDate: dailyTertiary,
+      pipelineGroups,
+      sourceGroups,
+      branchMetrics: metricRows.map((row) => ({
+        branchId: row.branchId,
+        activeCount: row.activeCount,
+        pendingFollowups: row.pendingFollowups,
+      })),
+    };
+  }
+
+  private async isProjectedScopeFresh(input: {
+    tenantId: string;
+    branchIds: string[] | null;
+    now: Date;
+  }): Promise<boolean> {
+    const { tenantId, branchIds, now } = input;
+    const cutoff = new Date(now.getTime() - PROJECTION_STALE_MS);
+
+    if (branchIds === null) {
+      const state = await this.prisma.dashboardProjectionState.findUnique({
+        where: {
+          tenantId_scopeKey: {
+            tenantId,
+            scopeKey: ALL_BRANCHES_SCOPE_KEY,
+          },
+        },
+        select: {
+          refreshedAt: true,
+        },
+      });
+
+      return Boolean(state && state.refreshedAt >= cutoff);
+    }
+
+    if (branchIds.length === 0) {
+      return true;
+    }
+
+    const distinctScopeKeys = Array.from(new Set(branchIds));
+    const freshCount = await this.prisma.dashboardProjectionState.count({
+      where: {
+        tenantId,
+        scopeKey: {
+          in: distinctScopeKeys,
+        },
+        refreshedAt: {
+          gte: cutoff,
+        },
+      },
+    });
+
+    return freshCount === distinctScopeKeys.length;
+  }
+
+  private buildProjectedScopeFilter(
+    branchIds: string[] | null,
+  ): {
+    scopeKey?: {
+      in: string[];
+    };
+  } {
+    if (branchIds === null) {
+      return {};
+    }
+
+    if (branchIds.length === 0) {
+      return {
+        scopeKey: {
+          in: [],
+        },
+      };
+    }
+
+    return {
+      scopeKey: {
+        in: branchIds,
+      },
+    };
+  }
+
+  private async loadLiveOnlyMetrics(input: {
+    leadScopeWhere: Prisma.LeadWhereInput;
+    pendingFollowupWhere: Prisma.FollowUpWhereInput;
+    start: Date;
+    end: Date;
+    now: Date;
+  }): Promise<{
+    missedFollowups: number;
+    postReportFollowupsDue: number;
+    avgResponseMinutes: number;
+    overdueFollowups: number;
+    dueTodayFollowups: number;
+    escalatedFollowups: number;
+    completedTodayFollowups: number;
+  }> {
+    const { leadScopeWhere, pendingFollowupWhere, start, end, now } = input;
+
+    const [
+      missedFollowups,
+      postReportFollowupsDue,
+      responseSample,
+      overdueFollowups,
+      dueTodayFollowups,
+      escalatedFollowups,
+      completedTodayFollowups,
+    ] = await Promise.all([
+      this.prisma.followUp.count({
+        where: {
+          ...pendingFollowupWhere,
+          scheduledAt: { lt: now },
+        },
+      }),
+      this.prisma.followUp.count({
+        where: {
+          ...pendingFollowupWhere,
+          kind: 'POST_REPORT',
+          scheduledAt: { lte: end },
+        },
+      }),
+      this.prisma.lead.findMany({
+        where: leadScopeWhere,
+        include: {
+          followUps: {
+            take: 1,
+            orderBy: { createdAt: 'asc' },
+            select: { createdAt: true },
+          },
+        },
+        take: 100,
+      }),
+      this.prisma.followUp.count({
+        where: {
+          ...pendingFollowupWhere,
+          scheduledAt: { lt: start },
+          escalatedAt: null,
+          secondEscalatedAt: null,
+        },
+      }),
+      this.prisma.followUp.count({
+        where: {
+          ...pendingFollowupWhere,
+          scheduledAt: { gte: start, lte: end },
+          escalatedAt: null,
+          secondEscalatedAt: null,
+        },
+      }),
+      this.prisma.followUp.count({
+        where: {
+          ...pendingFollowupWhere,
+          OR: [{ escalatedAt: { not: null } }, { secondEscalatedAt: { not: null } }],
+        },
+      }),
+      this.prisma.followUp.count({
+        where: {
+          ...pendingFollowupWhere,
+          done: true,
+          doneAt: { gte: start, lte: end },
+        },
+      }),
+    ]);
+
+    const responseTimes = responseSample
+      .filter((lead) => lead.followUps.length > 0)
+      .map((lead) => {
+        const first = lead.followUps[0];
+        return (first.createdAt.getTime() - lead.createdAt.getTime()) / 1000 / 60;
+      });
+
+    const avgResponseMinutes =
+      responseTimes.length === 0
+        ? 0
+        : Number(
+            (responseTimes.reduce((sum, minutes) => sum + minutes, 0) / responseTimes.length).toFixed(
+              1,
+            ),
+          );
+
+    return {
+      missedFollowups,
+      postReportFollowupsDue,
+      avgResponseMinutes,
+      overdueFollowups,
+      dueTodayFollowups,
+      escalatedFollowups,
+      completedTodayFollowups,
+    };
+  }
+
+  private buildProjectedAnalytics(input: {
+    buckets: DayBucket[];
+    displayConfig: Awaited<ReturnType<TenantConfigService['getDisplayConfig']>>;
+    industryPreset: IndustryPreset;
+    projectedStats: {
+      trendPrimaryByDate: Map<string, number>;
+      trendSecondaryByDate: Map<string, number>;
+      trendTertiaryByDate: Map<string, number>;
+      pipelineGroups: Array<{
+        stageKey: string | null;
+        status: string;
+        _count: { _all: number };
+      }>;
+      sourceGroups: Array<{
+        source: string | null;
+        _count: { _all: number };
+      }>;
+      branchMetrics: Array<{
+        branchId: string | null;
+        activeCount: number;
+        pendingFollowups: number;
+      }>;
+    };
+    overdueFollowups: number;
+    dueTodayFollowups: number;
+    escalatedFollowups: number;
+    completedTodayFollowups: number;
+    accessibleBranches: BranchSummary[];
+    shouldCompareBranches: boolean;
+  }): DashboardAnalytics {
+    const {
+      buckets,
+      displayConfig,
+      industryPreset,
+      projectedStats,
+      overdueFollowups,
+      dueTodayFollowups,
+      escalatedFollowups,
+      completedTodayFollowups,
+      accessibleBranches,
+      shouldCompareBranches,
+    } = input;
+
+    const trendPrimaryLabel = `New ${displayConfig.vocabulary.leadPlural}`;
+    const trendSecondaryLabel =
+      industryPreset !== IndustryPreset.GENERIC
+        ? this.pluralize(displayConfig.vocabulary.bookingLabel)
+        : `Won ${displayConfig.vocabulary.leadPlural}`;
+    const trendTertiaryLabel = `Completed ${this.pluralize(displayConfig.vocabulary.followupLabel)}`;
+
+    const trendPoints: DashboardTrendPoint[] = buckets.map((bucket) => ({
+      date: bucket.date,
+      label: bucket.label,
+      primary: projectedStats.trendPrimaryByDate.get(bucket.date) ?? 0,
+      secondary: projectedStats.trendSecondaryByDate.get(bucket.date) ?? 0,
+      tertiary: projectedStats.trendTertiaryByDate.get(bucket.date) ?? 0,
+    }));
+
+    const pipelineStageCounts = new Map<string, number>();
+    const extraBuckets = new Map<string, DashboardBreakdownItem>();
+
+    for (const group of projectedStats.pipelineGroups) {
+      if (group.stageKey) {
+        pipelineStageCounts.set(
+          group.stageKey,
+          (pipelineStageCounts.get(group.stageKey) ?? 0) + group._count._all,
+        );
+        continue;
+      }
+
+      const extraKey = `status:${group.status}`;
+      const existing = extraBuckets.get(extraKey);
+      extraBuckets.set(extraKey, {
+        key: extraKey,
+        label: displayConfig.vocabulary.statusLabels[group.status] ?? group.status,
+        value: (existing?.value ?? 0) + group._count._all,
+      });
+    }
+
+    const pipelineBreakdown: DashboardBreakdownItem[] = displayConfig.pipelineConfig.stages
+      .map((stage) => ({
+        key: stage.key,
+        label: stage.label,
+        value: pipelineStageCounts.get(stage.key) ?? 0,
+      }))
+      .filter((item) => item.value > 0);
+
+    pipelineBreakdown.push(...Array.from(extraBuckets.values()).filter((item) => item.value > 0));
+
+    const followupHealth: DashboardBreakdownItem[] = [
+      { key: 'overdue', label: 'Overdue', value: overdueFollowups },
+      { key: 'escalated', label: 'Escalated', value: escalatedFollowups },
+      { key: 'due-today', label: 'Due Today', value: dueTodayFollowups },
+      { key: 'completed-today', label: 'Completed Today', value: completedTodayFollowups },
+    ];
+
+    const comparison = shouldCompareBranches
+      ? this.buildBranchComparisonFromProjected(
+          accessibleBranches,
+          projectedStats.branchMetrics,
+          displayConfig.vocabulary.leadPlural,
+          `Pending ${this.pluralize(displayConfig.vocabulary.followupLabel)}`,
+        )
+      : this.buildSourceComparison(projectedStats.sourceGroups, displayConfig.vocabulary.leadPlural);
+
+    return {
+      trend: {
+        primaryLabel: trendPrimaryLabel,
+        secondaryLabel: trendSecondaryLabel,
+        tertiaryLabel: trendTertiaryLabel,
+        points: trendPoints,
+      },
+      pipelineBreakdown: {
+        title: 'Current Stage Snapshot',
+        items: pipelineBreakdown,
+      },
+      followupHealth: {
+        items: followupHealth,
+      },
+      comparison,
+    };
+  }
+
+  private buildBranchComparisonFromProjected(
+    accessibleBranches: BranchSummary[],
+    branchMetrics: Array<{
+      branchId: string | null;
+      activeCount: number;
+      pendingFollowups: number;
+    }>,
+    primaryLabel: string,
+    secondaryLabel: string,
+  ): DashboardAnalytics['comparison'] {
+    const activeCountByBranchId = new Map<string, number>();
+    const pendingCountByBranchId = new Map<string, number>();
+
+    for (const row of branchMetrics) {
+      if (!row.branchId) {
+        continue;
+      }
+
+      activeCountByBranchId.set(row.branchId, (activeCountByBranchId.get(row.branchId) ?? 0) + row.activeCount);
+      pendingCountByBranchId.set(
+        row.branchId,
+        (pendingCountByBranchId.get(row.branchId) ?? 0) + row.pendingFollowups,
+      );
+    }
+
+    const items: DashboardComparisonItem[] = accessibleBranches
+      .map((branch) => ({
+        key: branch.id,
+        label: branch.name,
+        value: activeCountByBranchId.get(branch.id) ?? 0,
+        secondaryValue: pendingCountByBranchId.get(branch.id) ?? 0,
+      }))
+      .filter((item) => item.value > 0 || (item.secondaryValue ?? 0) > 0)
+      .sort((left, right) => {
+        const leftTotal = left.value + (left.secondaryValue ?? 0);
+        const rightTotal = right.value + (right.secondaryValue ?? 0);
+        return rightTotal - leftTotal;
+      });
+
+    return {
+      kind: 'branch',
+      title: 'Branch Comparison',
+      primaryLabel,
+      secondaryLabel,
+      items,
+    };
   }
 
   private buildAnalytics(input: {
@@ -647,6 +1219,10 @@ export class DashboardService {
     const day = parts.find((part) => part.type === 'day')?.value ?? '00';
 
     return `${year}-${month}-${day}`;
+  }
+
+  private metricDateKey(value: Date): string {
+    return value.toISOString().slice(0, 10);
   }
 
   private formatDayLabel(value: Date, timezone: string): string {

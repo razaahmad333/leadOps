@@ -96,6 +96,21 @@ export class ReminderProcessor extends WorkerHost {
       if (updated.count === 0) {
         return;
       }
+
+      const primaryRecipient = await this.resolvePrimaryRecipient(followUp);
+      if (primaryRecipient && primaryRecipient.id === recipient.id) {
+        this.logger.log(
+          `Skipping duplicate second escalation notification for follow-up ${followUp.id} (recipient=${recipient.id})`,
+        );
+
+        await this.publishInvalidations({
+          tenantId: job.data.tenantId,
+          branchId: followUp.lead.branchId ?? undefined,
+          leadId: followUp.leadId,
+          reason: this.invalidationReason(kind),
+        });
+        return;
+      }
     }
 
     const notification = await this.createNotification({

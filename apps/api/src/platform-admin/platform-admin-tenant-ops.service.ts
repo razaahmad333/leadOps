@@ -12,6 +12,7 @@ import {
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AccessControlService } from '../access-control/access-control.service';
+import { QueueService } from '../queue/queue.service';
 import { TenantConfigService } from '../tenant/tenant-config.service';
 import { normalizePhoneNumber } from '../common/utils/phone.util';
 import { PlatformAdminSharedService } from './platform-admin.shared.service';
@@ -25,6 +26,7 @@ export class PlatformAdminTenantOpsService {
     private readonly accessControl: AccessControlService,
     private readonly tenantConfig: TenantConfigService,
     private readonly shared: PlatformAdminSharedService,
+    private readonly queue: QueueService,
   ) {}
 
   async updateTenantSettings(
@@ -43,7 +45,17 @@ export class PlatformAdminTenantOpsService {
       throw new NotFoundException('Tenant not found');
     }
 
-    return this.tenantConfig.updateSettings(dto, tenantId, actor.id);
+    const before = await this.tenantConfig.getSettings(tenantId);
+    const updated = await this.tenantConfig.updateSettings(dto, tenantId, actor.id);
+
+    if (dto.timezone && dto.timezone.trim() !== before.timezone) {
+      await this.queue.enqueueDashboardTenantRebuild({
+        tenantId,
+        reason: 'platform.tenant.settings.timezone.updated',
+      });
+    }
+
+    return updated;
   }
 
   async createTenantBranch(
@@ -52,7 +64,6 @@ export class PlatformAdminTenantOpsService {
     dto: CreateBranchDto,
   ): Promise<PlatformTenantDetails['branches'][number]> {
     this.shared.ensureSuperAdmin(actor);
-    await this.accessControl.ensureTenantInitialized(tenantId);
     await this.shared.ensureTenantExists(tenantId);
 
     const name = dto.name.trim();
@@ -84,6 +95,7 @@ export class PlatformAdminTenantOpsService {
           },
         },
       });
+      await this.accessControl.invalidateTenantUsers(tenantId);
 
       return {
         id: branch.id,
@@ -109,7 +121,6 @@ export class PlatformAdminTenantOpsService {
     dto: UpdateBranchDto,
   ): Promise<PlatformTenantDetails['branches'][number]> {
     this.shared.ensureSuperAdmin(actor);
-    await this.accessControl.ensureTenantInitialized(tenantId);
 
     const existing = await this.prisma.branch.findFirst({
       where: {
@@ -164,6 +175,7 @@ export class PlatformAdminTenantOpsService {
           metadata: metadata as Prisma.InputJsonValue,
         },
       });
+      await this.accessControl.invalidateTenantUsers(tenantId);
 
       return {
         id: branch.id,
@@ -214,7 +226,7 @@ export class PlatformAdminTenantOpsService {
     try {
       await this.shared.createTenantConfig(tenant.id, dto.industryPreset as IndustryPreset);
       this.tenantConfig.invalidate(tenant.id);
-      await this.accessControl.ensureTenantInitialized(tenant.id);
+      await this.accessControl.provisionTenantRbac(tenant.id, dto.industryPreset as IndustryPreset);
 
       await this.shared.createMembershipRecord({
         tenantId: tenant.id,

@@ -5,8 +5,8 @@ import {
   UpdatePlatformTenantRoleDto,
 } from '@leadops/shared';
 import { Prisma } from '@prisma/client';
-import { PrismaService } from '../prisma/prisma.service';
 import { AccessControlService } from '../access-control/access-control.service';
+import { PrismaService } from '../prisma/prisma.service';
 import { PlatformAdminSharedService } from './platform-admin.shared.service';
 
 @Injectable()
@@ -22,7 +22,6 @@ export class PlatformAdminRoleOpsService {
     tenantId: string,
   ): Promise<PlatformTenantRole[]> {
     this.shared.ensureSuperAdmin(actor);
-    await this.accessControl.ensureTenantInitialized(tenantId);
     await this.shared.ensureTenantExists(tenantId);
 
     const roles = await this.prisma.permissionRole.findMany({
@@ -53,7 +52,6 @@ export class PlatformAdminRoleOpsService {
     dto: CreatePlatformTenantRoleDto,
   ): Promise<PlatformTenantRole> {
     this.shared.ensureSuperAdmin(actor);
-    await this.accessControl.ensureTenantInitialized(tenantId);
     await this.shared.ensureTenantExists(tenantId);
 
     const name = dto.name.trim();
@@ -122,7 +120,6 @@ export class PlatformAdminRoleOpsService {
     dto: UpdatePlatformTenantRoleDto,
   ): Promise<PlatformTenantRole> {
     this.shared.ensureSuperAdmin(actor);
-    await this.accessControl.ensureTenantInitialized(tenantId);
     await this.shared.ensureTenantExists(tenantId);
 
     const existing = await this.prisma.permissionRole.findFirst({
@@ -198,6 +195,8 @@ export class PlatformAdminRoleOpsService {
           skipDuplicates: true,
         });
       }
+
+      await this.accessControl.invalidateUsersAssignedToRole(existing.id);
     }
 
     const updated = await this.prisma.permissionRole.findUniqueOrThrow({

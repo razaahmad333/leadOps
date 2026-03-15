@@ -13,7 +13,6 @@ import {
   UserStatus,
 } from '@leadops/shared';
 import { PrismaService } from '../prisma/prisma.service';
-import { AccessControlService } from '../access-control/access-control.service';
 import { TenantConfigService } from '../tenant/tenant-config.service';
 import { buildPaginatedResponse } from '../common/utils/pagination.util';
 import { PlatformAdminSharedService } from './platform-admin.shared.service';
@@ -22,7 +21,6 @@ import { PlatformAdminSharedService } from './platform-admin.shared.service';
 export class PlatformAdminReadService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly accessControl: AccessControlService,
     private readonly tenantConfig: TenantConfigService,
     private readonly shared: PlatformAdminSharedService,
   ) {}
@@ -183,7 +181,6 @@ export class PlatformAdminReadService {
     query: PlatformTenantDetailsQueryDto = {},
   ): Promise<PlatformTenantDetails> {
     this.shared.ensureSuperAdmin(actor);
-    await this.accessControl.ensureTenantInitialized(tenantId);
 
     const [tenant, settings, availableRoles] = await Promise.all([
       this.prisma.tenant.findUnique({

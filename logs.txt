@@ -1,0 +1,537 @@
+@leadops/api:dev: {"level":30,"time":1773553080597,"pid":9811,"hostname":"Ahmads-MacBook-Air.local","reqId":"req-j","req":{"method":"GET","url":"/v1/dashboard/stats","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":62627},"msg":"incoming request"}
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM   DEBUG [PrismaService] [prisma:query] SELECT 1
+@leadops/api:dev: [params] []
+@leadops/api:dev: [duration] 0ms
+@leadops/api:dev: [target] quaint::connector::metrics
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM   DEBUG [PrismaService] [prisma:query] SELECT "public"."tenants"."id", "public"."tenants"."slug", "public"."tenants"."name", "public"."tenants"."created_at", "public"."tenants"."updated_at" FROM "public"."tenants" WHERE ("public"."tenants"."id" = $1 AND 1=1) LIMIT $2 OFFSET $3
+@leadops/api:dev: [params] [
+@leadops/api:dev:   "d3b4d352-9cb6-4aaf-956a-17c6453396a1",
+@leadops/api:dev:   1,
+@leadops/api:dev:   0
+@leadops/api:dev: ]
+@leadops/api:dev: [duration] 1ms
+@leadops/api:dev: [target] quaint::connector::metrics
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM   DEBUG [TenantMiddleware] Tenant resolved: demo-lab (9b8a6154-f089-4972-967d-066679ba0043)
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM   DEBUG [AccessControlService] [auth-cache] requestId=9b8a6154-f089-4972-967d-066679ba0043 source=l1 hit=1 miss=0 l1=1 l2=0 db=0 singleflight=0 error=0
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM   DEBUG [PrismaService] [prisma:query] SELECT "public"."tenant_configs"."id", "public"."tenant_configs"."tenant_id", "public"."tenant_configs"."industry_preset", "public"."tenant_configs"."config_version", "public"."tenant_configs"."display_config", "public"."tenant_configs"."timezone", "public"."tenant_configs"."business_start", "public"."tenant_configs"."business_end", "public"."tenant_configs"."stages", "public"."tenant_configs"."reminder_rules", "public"."tenant_configs"."templates", "public"."tenant_configs"."feature_flags", "public"."tenant_configs"."created_at", "public"."tenant_configs"."updated_at" FROM "public"."tenant_configs" WHERE ("public"."tenant_configs"."tenant_id" = $1 AND 1=1) LIMIT $2 OFFSET $3
+@leadops/api:dev: [params] [
+@leadops/api:dev:   "d3b4d352-9cb6-4aaf-956a-17c6453396a1",
+@leadops/api:dev:   1,
+@leadops/api:dev:   0
+@leadops/api:dev: ]
+@leadops/api:dev: [duration] 3ms
+@leadops/api:dev: [target] quaint::connector::metrics
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM   DEBUG [PrismaService] [prisma:query] SELECT "public"."branches"."id", "public"."branches"."name" FROM "public"."branches" WHERE ("public"."branches"."tenant_id" = $1 AND "public"."branches"."is_active" = $2) ORDER BY "public"."branches"."name" ASC OFFSET $3
+@leadops/api:dev: [params] [
+@leadops/api:dev:   "d3b4d352-9cb6-4aaf-956a-17c6453396a1",
+@leadops/api:dev:   true,
+@leadops/api:dev:   0
+@leadops/api:dev: ]
+@leadops/api:dev: [duration] 2ms
+@leadops/api:dev: [target] quaint::connector::metrics
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM   DEBUG [PrismaService] [prisma:query] SELECT "public"."dashboard_projection_state"."id", "public"."dashboard_projection_state"."refreshed_at" FROM "public"."dashboard_projection_state" WHERE (("public"."dashboard_projection_state"."tenant_id" = $1 AND "public"."dashboard_projection_state"."scope_key" = $2) AND 1=1) LIMIT $3 OFFSET $4
+@leadops/api:dev: [params] [
+@leadops/api:dev:   "d3b4d352-9cb6-4aaf-956a-17c6453396a1",
+@leadops/api:dev:   "__all_branches__",
+@leadops/api:dev:   1,
+@leadops/api:dev:   0
+@leadops/api:dev: ]
+@leadops/api:dev: [duration] 2ms
+@leadops/api:dev: [target] quaint::connector::metrics
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM   DEBUG [PrismaService] [prisma:query] SELECT 1
+@leadops/api:dev: [params] []
+@leadops/api:dev: [duration] 2ms
+@leadops/api:dev: [target] quaint::connector::metrics
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM   DEBUG [PrismaService] [prisma:query] SELECT 1
+@leadops/api:dev: [params] []
+@leadops/api:dev: [duration] 3ms
+@leadops/api:dev: [target] quaint::connector::metrics
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM   DEBUG [PrismaService] [prisma:query] SELECT 1
+@leadops/api:dev: [params] []
+@leadops/api:dev: [duration] 3ms
+@leadops/api:dev: [target] quaint::connector::metrics
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM   DEBUG [PrismaService] [prisma:query] SELECT 1
+@leadops/api:dev: [params] []
+@leadops/api:dev: [duration] 3ms
+@leadops/api:dev: [target] quaint::connector::metrics
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM   DEBUG [PrismaService] [prisma:query] SELECT 1
+@leadops/api:dev: [params] []
+@leadops/api:dev: [duration] 3ms
+@leadops/api:dev: [target] quaint::connector::metrics
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM   DEBUG [PrismaService] [prisma:query] SELECT 1
+@leadops/api:dev: [params] []
+@leadops/api:dev: [duration] 3ms
+@leadops/api:dev: [target] quaint::connector::metrics
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM   DEBUG [PrismaService] [prisma:query] SELECT 1
+@leadops/api:dev: [params] []
+@leadops/api:dev: [duration] 3ms
+@leadops/api:dev: [target] quaint::connector::metrics
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM   DEBUG [PrismaService] [prisma:query] SELECT 1
+@leadops/api:dev: [params] []
+@leadops/api:dev: [duration] 3ms
+@leadops/api:dev: [target] quaint::connector::metrics
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM   DEBUG [PrismaService] [prisma:query] SELECT 1
+@leadops/api:dev: [params] []
+@leadops/api:dev: [duration] 3ms
+@leadops/api:dev: [target] quaint::connector::metrics
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM   DEBUG [PrismaService] [prisma:query] SELECT 1
+@leadops/api:dev: [params] []
+@leadops/api:dev: [duration] 3ms
+@leadops/api:dev: [target] quaint::connector::metrics
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM   DEBUG [PrismaService] [prisma:query] SELECT 1
+@leadops/api:dev: [params] []
+@leadops/api:dev: [duration] 4ms
+@leadops/api:dev: [target] quaint::connector::metrics
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM   DEBUG [PrismaService] [prisma:query] SELECT 1
+@leadops/api:dev: [params] []
+@leadops/api:dev: [duration] 3ms
+@leadops/api:dev: [target] quaint::connector::metrics
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM   DEBUG [PrismaService] [prisma:query] SELECT 1
+@leadops/api:dev: [params] []
+@leadops/api:dev: [duration] 4ms
+@leadops/api:dev: [target] quaint::connector::metrics
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM   DEBUG [PrismaService] [prisma:query] SELECT 1
+@leadops/api:dev: [params] []
+@leadops/api:dev: [duration] 4ms
+@leadops/api:dev: [target] quaint::connector::metrics
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM   DEBUG [PrismaService] [prisma:query] SELECT 1
+@leadops/api:dev: [params] []
+@leadops/api:dev: [duration] 4ms
+@leadops/api:dev: [target] quaint::connector::metrics
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM   DEBUG [PrismaService] [prisma:query] SELECT 1
+@leadops/api:dev: [params] []
+@leadops/api:dev: [duration] 3ms
+@leadops/api:dev: [target] quaint::connector::metrics
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM   DEBUG [PrismaService] [prisma:query] SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."leads"."id" FROM "public"."leads" WHERE ("public"."leads"."tenant_id" = $1 AND "public"."leads"."status" = CAST($2::text AS "public"."LeadStatus")) OFFSET $3) AS "sub"
+@leadops/api:dev: [params] [
+@leadops/api:dev:   "d3b4d352-9cb6-4aaf-956a-17c6453396a1",
+@leadops/api:dev:   "PENDING",
+@leadops/api:dev:   0
+@leadops/api:dev: ]
+@leadops/api:dev: [duration] 5ms
+@leadops/api:dev: [target] quaint::connector::metrics
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM   DEBUG [PrismaService] [prisma:query] SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."leads"."id" FROM "public"."leads" WHERE ("public"."leads"."tenant_id" = $1 AND "public"."leads"."status" = CAST($2::text AS "public"."LeadStatus")) OFFSET $3) AS "sub"
+@leadops/api:dev: [params] [
+@leadops/api:dev:   "d3b4d352-9cb6-4aaf-956a-17c6453396a1",
+@leadops/api:dev:   "WON",
+@leadops/api:dev:   0
+@leadops/api:dev: ]
+@leadops/api:dev: [duration] 8ms
+@leadops/api:dev: [target] quaint::connector::metrics
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM   DEBUG [PrismaService] [prisma:query] SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."follow_ups"."id" FROM "public"."follow_ups" WHERE ("public"."follow_ups"."tenant_id" = $1 AND "public"."follow_ups"."done" = $2 AND "public"."follow_ups"."scheduled_at" < $3) OFFSET $4) AS "sub"
+@leadops/api:dev: [params] [
+@leadops/api:dev:   "d3b4d352-9cb6-4aaf-956a-17c6453396a1",
+@leadops/api:dev:   false,
+@leadops/api:dev:   "2026-03-15 05:38:00.609 UTC",
+@leadops/api:dev:   0
+@leadops/api:dev: ]
+@leadops/api:dev: [duration] 5ms
+@leadops/api:dev: [target] quaint::connector::metrics
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM   DEBUG [PrismaService] [prisma:query] SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."leads"."id" FROM "public"."leads" WHERE ("public"."leads"."tenant_id" = $1 AND "public"."leads"."status" = CAST($2::text AS "public"."LeadStatus")) OFFSET $3) AS "sub"
+@leadops/api:dev: [params] [
+@leadops/api:dev:   "d3b4d352-9cb6-4aaf-956a-17c6453396a1",
+@leadops/api:dev:   "NEW",
+@leadops/api:dev:   0
+@leadops/api:dev: ]
+@leadops/api:dev: [duration] 5ms
+@leadops/api:dev: [target] quaint::connector::metrics
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM   DEBUG [PrismaService] [prisma:query] SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."leads"."id" FROM "public"."leads" WHERE ("public"."leads"."tenant_id" = $1 AND "public"."leads"."created_at" >= $2 AND "public"."leads"."created_at" <= $3) OFFSET $4) AS "sub"
+@leadops/api:dev: [params] [
+@leadops/api:dev:   "d3b4d352-9cb6-4aaf-956a-17c6453396a1",
+@leadops/api:dev:   "2026-03-14 18:30:00 UTC",
+@leadops/api:dev:   "2026-03-15 18:29:59.999 UTC",
+@leadops/api:dev:   0
+@leadops/api:dev: ]
+@leadops/api:dev: [duration] 5ms
+@leadops/api:dev: [target] quaint::connector::metrics
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM   DEBUG [PrismaService] [prisma:query] SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."follow_ups"."id" FROM "public"."follow_ups" WHERE ("public"."follow_ups"."tenant_id" = $1 AND "public"."follow_ups"."done" = $2) OFFSET $3) AS "sub"
+@leadops/api:dev: [params] [
+@leadops/api:dev:   "d3b4d352-9cb6-4aaf-956a-17c6453396a1",
+@leadops/api:dev:   false,
+@leadops/api:dev:   0
+@leadops/api:dev: ]
+@leadops/api:dev: [duration] 9ms
+@leadops/api:dev: [target] quaint::connector::metrics
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM   DEBUG [PrismaService] [prisma:query] SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."leads"."id" FROM "public"."leads" WHERE ("public"."leads"."tenant_id" = $1 AND "public"."leads"."status" = CAST($2::text AS "public"."LeadStatus")) OFFSET $3) AS "sub"
+@leadops/api:dev: [params] [
+@leadops/api:dev:   "d3b4d352-9cb6-4aaf-956a-17c6453396a1",
+@leadops/api:dev:   "LOST",
+@leadops/api:dev:   0
+@leadops/api:dev: ]
+@leadops/api:dev: [duration] 10ms
+@leadops/api:dev: [target] quaint::connector::metrics
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM   DEBUG [PrismaService] [prisma:query] SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."leads"."id" FROM "public"."leads" WHERE ("public"."leads"."tenant_id" = $1 AND "public"."leads"."stage_key" IN ($2) AND "public"."leads"."updated_at" >= $3 AND "public"."leads"."updated_at" <= $4) OFFSET $5) AS "sub"
+@leadops/api:dev: [params] [
+@leadops/api:dev:   "d3b4d352-9cb6-4aaf-956a-17c6453396a1",
+@leadops/api:dev:   "BOOKING_CONFIRMED",
+@leadops/api:dev:   "2026-03-14 18:30:00 UTC",
+@leadops/api:dev:   "2026-03-15 18:29:59.999 UTC",
+@leadops/api:dev:   0
+@leadops/api:dev: ]
+@leadops/api:dev: [duration] 10ms
+@leadops/api:dev: [target] quaint::connector::metrics
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM   DEBUG [PrismaService] [prisma:query] SELECT "public"."follow_ups"."id", "public"."follow_ups"."done_at" FROM "public"."follow_ups" WHERE ("public"."follow_ups"."tenant_id" = $1 AND "public"."follow_ups"."done" = $2 AND "public"."follow_ups"."done_at" >= $3 AND "public"."follow_ups"."done_at" <= $4) OFFSET $5
+@leadops/api:dev: [params] [
+@leadops/api:dev:   "d3b4d352-9cb6-4aaf-956a-17c6453396a1",
+@leadops/api:dev:   true,
+@leadops/api:dev:   "2026-03-01 18:30:00 UTC",
+@leadops/api:dev:   "2026-03-15 18:29:59.999 UTC",
+@leadops/api:dev:   0
+@leadops/api:dev: ]
+@leadops/api:dev: [duration] 10ms
+@leadops/api:dev: [target] quaint::connector::metrics
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM   DEBUG [PrismaService] [prisma:query] SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."follow_ups"."id" FROM "public"."follow_ups" WHERE ("public"."follow_ups"."tenant_id" = $1 AND "public"."follow_ups"."done" = $2 AND "public"."follow_ups"."kind" = $3 AND "public"."follow_ups"."scheduled_at" <= $4) OFFSET $5) AS "sub"
+@leadops/api:dev: [params] [
+@leadops/api:dev:   "d3b4d352-9cb6-4aaf-956a-17c6453396a1",
+@leadops/api:dev:   false,
+@leadops/api:dev:   "POST_REPORT",
+@leadops/api:dev:   "2026-03-15 18:29:59.999 UTC",
+@leadops/api:dev:   0
+@leadops/api:dev: ]
+@leadops/api:dev: [duration] 11ms
+@leadops/api:dev: [target] quaint::connector::metrics
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM   DEBUG [PrismaService] [prisma:query] SELECT "public"."leads"."id", "public"."leads"."updated_at" FROM "public"."leads" WHERE ("public"."leads"."tenant_id" = $1 AND "public"."leads"."stage_key" IN ($2) AND "public"."leads"."updated_at" >= $3 AND "public"."leads"."updated_at" <= $4) OFFSET $5
+@leadops/api:dev: [params] [
+@leadops/api:dev:   "d3b4d352-9cb6-4aaf-956a-17c6453396a1",
+@leadops/api:dev:   "BOOKING_CONFIRMED",
+@leadops/api:dev:   "2026-03-01 18:30:00 UTC",
+@leadops/api:dev:   "2026-03-15 18:29:59.999 UTC",
+@leadops/api:dev:   0
+@leadops/api:dev: ]
+@leadops/api:dev: [duration] 12ms
+@leadops/api:dev: [target] quaint::connector::metrics
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM   DEBUG [PrismaService] [prisma:query] SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."follow_ups"."id" FROM "public"."follow_ups" WHERE ("public"."follow_ups"."tenant_id" = $1 AND "public"."follow_ups"."done" = $2 AND ("public"."follow_ups"."escalated_at" IS NOT NULL OR "public"."follow_ups"."second_escalated_at" IS NOT NULL)) OFFSET $3) AS "sub"
+@leadops/api:dev: [params] [
+@leadops/api:dev:   "d3b4d352-9cb6-4aaf-956a-17c6453396a1",
+@leadops/api:dev:   false,
+@leadops/api:dev:   0
+@leadops/api:dev: ]
+@leadops/api:dev: [duration] 11ms
+@leadops/api:dev: [target] quaint::connector::metrics
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM   DEBUG [PrismaService] [prisma:query] SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."follow_ups"."id" FROM "public"."follow_ups" WHERE ("public"."follow_ups"."tenant_id" = $1 AND "public"."follow_ups"."done" = $2 AND "public"."follow_ups"."scheduled_at" < $3 AND "public"."follow_ups"."escalated_at" IS NULL AND "public"."follow_ups"."second_escalated_at" IS NULL) OFFSET $4) AS "sub"
+@leadops/api:dev: [params] [
+@leadops/api:dev:   "d3b4d352-9cb6-4aaf-956a-17c6453396a1",
+@leadops/api:dev:   false,
+@leadops/api:dev:   "2026-03-14 18:30:00 UTC",
+@leadops/api:dev:   0
+@leadops/api:dev: ]
+@leadops/api:dev: [duration] 12ms
+@leadops/api:dev: [target] quaint::connector::metrics
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM   DEBUG [PrismaService] [prisma:query] SELECT "public"."leads"."id", "public"."leads"."tenant_id", "public"."leads"."owner_id", "public"."leads"."branch_id", "public"."leads"."stage_key", "public"."leads"."name", "public"."leads"."phone", "public"."leads"."email", "public"."leads"."source", "public"."leads"."intake_data", "public"."leads"."status"::text, "public"."leads"."next_follow_up_at", "public"."leads"."created_at", "public"."leads"."updated_at" FROM "public"."leads" WHERE "public"."leads"."tenant_id" = $1 ORDER BY "public"."leads"."id" ASC LIMIT $2 OFFSET $3
+@leadops/api:dev: [params] [
+@leadops/api:dev:   "d3b4d352-9cb6-4aaf-956a-17c6453396a1",
+@leadops/api:dev:   100,
+@leadops/api:dev:   0
+@leadops/api:dev: ]
+@leadops/api:dev: [duration] 12ms
+@leadops/api:dev: [target] quaint::connector::metrics
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM   DEBUG [PrismaService] [prisma:query] SELECT "public"."leads"."id", "public"."leads"."created_at" FROM "public"."leads" WHERE ("public"."leads"."tenant_id" = $1 AND "public"."leads"."created_at" >= $2 AND "public"."leads"."created_at" <= $3) OFFSET $4
+@leadops/api:dev: [params] [
+@leadops/api:dev:   "d3b4d352-9cb6-4aaf-956a-17c6453396a1",
+@leadops/api:dev:   "2026-03-01 18:30:00 UTC",
+@leadops/api:dev:   "2026-03-15 18:29:59.999 UTC",
+@leadops/api:dev:   0
+@leadops/api:dev: ]
+@leadops/api:dev: [duration] 11ms
+@leadops/api:dev: [target] quaint::connector::metrics
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM   DEBUG [PrismaService] [prisma:query] SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."follow_ups"."id" FROM "public"."follow_ups" WHERE ("public"."follow_ups"."tenant_id" = $1 AND "public"."follow_ups"."done" = $2 AND "public"."follow_ups"."scheduled_at" >= $3 AND "public"."follow_ups"."scheduled_at" <= $4 AND "public"."follow_ups"."escalated_at" IS NULL AND "public"."follow_ups"."second_escalated_at" IS NULL) OFFSET $5) AS "sub"
+@leadops/api:dev: [params] [
+@leadops/api:dev:   "d3b4d352-9cb6-4aaf-956a-17c6453396a1",
+@leadops/api:dev:   false,
+@leadops/api:dev:   "2026-03-14 18:30:00 UTC",
+@leadops/api:dev:   "2026-03-15 18:29:59.999 UTC",
+@leadops/api:dev:   0
+@leadops/api:dev: ]
+@leadops/api:dev: [duration] 12ms
+@leadops/api:dev: [target] quaint::connector::metrics
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM   DEBUG [PrismaService] [prisma:query] SELECT "public"."follow_ups"."id", "public"."follow_ups"."lead_id" FROM "public"."follow_ups" WHERE ("public"."follow_ups"."tenant_id" = $1 AND "public"."follow_ups"."done" = $2) OFFSET $3
+@leadops/api:dev: [params] [
+@leadops/api:dev:   "d3b4d352-9cb6-4aaf-956a-17c6453396a1",
+@leadops/api:dev:   false,
+@leadops/api:dev:   0
+@leadops/api:dev: ]
+@leadops/api:dev: [duration] 7ms
+@leadops/api:dev: [target] quaint::connector::metrics
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM   DEBUG [PrismaService] [prisma:query] SELECT COUNT(*) AS "_count$_all", "public"."leads"."branch_id" FROM "public"."leads" WHERE ("public"."leads"."tenant_id" = $1 AND "public"."leads"."status" IN (CAST($2::text AS "public"."LeadStatus"),CAST($3::text AS "public"."LeadStatus"),CAST($4::text AS "public"."LeadStatus"),CAST($5::text AS "public"."LeadStatus"))) GROUP BY "public"."leads"."branch_id" OFFSET $6
+@leadops/api:dev: [params] [
+@leadops/api:dev:   "d3b4d352-9cb6-4aaf-956a-17c6453396a1",
+@leadops/api:dev:   "NEW",
+@leadops/api:dev:   "CONTACTED",
+@leadops/api:dev:   "QUALIFIED",
+@leadops/api:dev:   "PENDING",
+@leadops/api:dev:   0
+@leadops/api:dev: ]
+@leadops/api:dev: [duration] 7ms
+@leadops/api:dev: [target] quaint::connector::metrics
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM   DEBUG [PrismaService] [prisma:query] SELECT COUNT(*) AS "_count$_all", "public"."leads"."stage_key", "public"."leads"."status"::text FROM "public"."leads" WHERE "public"."leads"."tenant_id" = $1 GROUP BY "public"."leads"."stage_key", "public"."leads"."status" OFFSET $2
+@leadops/api:dev: [params] [
+@leadops/api:dev:   "d3b4d352-9cb6-4aaf-956a-17c6453396a1",
+@leadops/api:dev:   0
+@leadops/api:dev: ]
+@leadops/api:dev: [duration] 13ms
+@leadops/api:dev: [target] quaint::connector::metrics
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM   DEBUG [PrismaService] [prisma:query] SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."follow_ups"."id" FROM "public"."follow_ups" WHERE ("public"."follow_ups"."tenant_id" = $1 AND "public"."follow_ups"."done" = $2 AND "public"."follow_ups"."done_at" >= $3 AND "public"."follow_ups"."done_at" <= $4) OFFSET $5) AS "sub"
+@leadops/api:dev: [params] [
+@leadops/api:dev:   "d3b4d352-9cb6-4aaf-956a-17c6453396a1",
+@leadops/api:dev:   true,
+@leadops/api:dev:   "2026-03-14 18:30:00 UTC",
+@leadops/api:dev:   "2026-03-15 18:29:59.999 UTC",
+@leadops/api:dev:   0
+@leadops/api:dev: ]
+@leadops/api:dev: [duration] 8ms
+@leadops/api:dev: [target] quaint::connector::metrics
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM   DEBUG [PrismaService] [prisma:query] SELECT "public"."leads"."id", "public"."leads"."branch_id" FROM "public"."leads" WHERE "public"."leads"."id" IN ($1,$2,$3) OFFSET $4
+@leadops/api:dev: [params] [
+@leadops/api:dev:   "9896ba2d-bd8d-42b3-90d5-f42110b36bbf",
+@leadops/api:dev:   "0e3e42ad-3e3b-4188-86bc-10358bfea3c2",
+@leadops/api:dev:   "774ce362-e4e1-47e9-8b0e-76fb6f3064c0",
+@leadops/api:dev:   0
+@leadops/api:dev: ]
+@leadops/api:dev: [duration] 1ms
+@leadops/api:dev: [target] quaint::connector::metrics
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM   DEBUG [PrismaService] [prisma:query] SELECT "public"."follow_ups"."id", "public"."follow_ups"."created_at", "public"."follow_ups"."lead_id" FROM "public"."follow_ups" WHERE "public"."follow_ups"."lead_id" IN ($1,$2,$3) ORDER BY "public"."follow_ups"."created_at" ASC OFFSET $4
+@leadops/api:dev: [params] [
+@leadops/api:dev:   "0e3e42ad-3e3b-4188-86bc-10358bfea3c2",
+@leadops/api:dev:   "774ce362-e4e1-47e9-8b0e-76fb6f3064c0",
+@leadops/api:dev:   "9896ba2d-bd8d-42b3-90d5-f42110b36bbf",
+@leadops/api:dev:   0
+@leadops/api:dev: ]
+@leadops/api:dev: [duration] 1ms
+@leadops/api:dev: [target] quaint::connector::metrics
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM     LOG [RequestLoggingInterceptor] {"event":"http.request","method":"GET","path":"/v1/dashboard/stats","durationMs":41,"params":{},"query":{}}
+@leadops/api:dev: {"level":30,"time":1773553080646,"pid":9811,"hostname":"Ahmads-MacBook-Air.local","reqId":"req-j","res":{"statusCode":200},"responseTime":48.56966590881348,"msg":"request completed"}
+@leadops/api:dev: {"level":30,"time":1773553080646,"pid":9811,"hostname":"Ahmads-MacBook-Air.local","reqId":"req-k","req":{"method":"GET","url":"/v1/dashboard/stats","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":62634},"msg":"incoming request"}
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM   DEBUG [PrismaService] [prisma:query] SELECT "public"."tenants"."id", "public"."tenants"."slug", "public"."tenants"."name", "public"."tenants"."created_at", "public"."tenants"."updated_at" FROM "public"."tenants" WHERE ("public"."tenants"."id" = $1 AND 1=1) LIMIT $2 OFFSET $3
+@leadops/api:dev: [params] [
+@leadops/api:dev:   "d3b4d352-9cb6-4aaf-956a-17c6453396a1",
+@leadops/api:dev:   1,
+@leadops/api:dev:   0
+@leadops/api:dev: ]
+@leadops/api:dev: [duration] 0ms
+@leadops/api:dev: [target] quaint::connector::metrics
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM   DEBUG [TenantMiddleware] Tenant resolved: demo-lab (6f30c029-0b88-496d-a785-9f936ff1e859)
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM   DEBUG [AccessControlService] [auth-cache] requestId=6f30c029-0b88-496d-a785-9f936ff1e859 source=l1 hit=1 miss=0 l1=1 l2=0 db=0 singleflight=0 error=0
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM   DEBUG [PrismaService] [prisma:query] SELECT "public"."tenant_configs"."id", "public"."tenant_configs"."tenant_id", "public"."tenant_configs"."industry_preset", "public"."tenant_configs"."config_version", "public"."tenant_configs"."display_config", "public"."tenant_configs"."timezone", "public"."tenant_configs"."business_start", "public"."tenant_configs"."business_end", "public"."tenant_configs"."stages", "public"."tenant_configs"."reminder_rules", "public"."tenant_configs"."templates", "public"."tenant_configs"."feature_flags", "public"."tenant_configs"."created_at", "public"."tenant_configs"."updated_at" FROM "public"."tenant_configs" WHERE ("public"."tenant_configs"."tenant_id" = $1 AND 1=1) LIMIT $2 OFFSET $3
+@leadops/api:dev: [params] [
+@leadops/api:dev:   "d3b4d352-9cb6-4aaf-956a-17c6453396a1",
+@leadops/api:dev:   1,
+@leadops/api:dev:   0
+@leadops/api:dev: ]
+@leadops/api:dev: [duration] 0ms
+@leadops/api:dev: [target] quaint::connector::metrics
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM   DEBUG [PrismaService] [prisma:query] SELECT "public"."branches"."id", "public"."branches"."name" FROM "public"."branches" WHERE ("public"."branches"."tenant_id" = $1 AND "public"."branches"."is_active" = $2) ORDER BY "public"."branches"."name" ASC OFFSET $3
+@leadops/api:dev: [params] [
+@leadops/api:dev:   "d3b4d352-9cb6-4aaf-956a-17c6453396a1",
+@leadops/api:dev:   true,
+@leadops/api:dev:   0
+@leadops/api:dev: ]
+@leadops/api:dev: [duration] 1ms
+@leadops/api:dev: [target] quaint::connector::metrics
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM   DEBUG [PrismaService] [prisma:query] SELECT "public"."dashboard_projection_state"."id", "public"."dashboard_projection_state"."refreshed_at" FROM "public"."dashboard_projection_state" WHERE (("public"."dashboard_projection_state"."tenant_id" = $1 AND "public"."dashboard_projection_state"."scope_key" = $2) AND 1=1) LIMIT $3 OFFSET $4
+@leadops/api:dev: [params] [
+@leadops/api:dev:   "d3b4d352-9cb6-4aaf-956a-17c6453396a1",
+@leadops/api:dev:   "__all_branches__",
+@leadops/api:dev:   1,
+@leadops/api:dev:   0
+@leadops/api:dev: ]
+@leadops/api:dev: [duration] 0ms
+@leadops/api:dev: [target] quaint::connector::metrics
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM   DEBUG [PrismaService] [prisma:query] SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."leads"."id" FROM "public"."leads" WHERE ("public"."leads"."tenant_id" = $1 AND "public"."leads"."status" = CAST($2::text AS "public"."LeadStatus")) OFFSET $3) AS "sub"
+@leadops/api:dev: [params] [
+@leadops/api:dev:   "d3b4d352-9cb6-4aaf-956a-17c6453396a1",
+@leadops/api:dev:   "LOST",
+@leadops/api:dev:   0
+@leadops/api:dev: ]
+@leadops/api:dev: [duration] 3ms
+@leadops/api:dev: [target] quaint::connector::metrics
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM   DEBUG [PrismaService] [prisma:query] SELECT COUNT(*) AS "_count$_all", "public"."leads"."branch_id" FROM "public"."leads" WHERE ("public"."leads"."tenant_id" = $1 AND "public"."leads"."status" IN (CAST($2::text AS "public"."LeadStatus"),CAST($3::text AS "public"."LeadStatus"),CAST($4::text AS "public"."LeadStatus"),CAST($5::text AS "public"."LeadStatus"))) GROUP BY "public"."leads"."branch_id" OFFSET $6
+@leadops/api:dev: [params] [
+@leadops/api:dev:   "d3b4d352-9cb6-4aaf-956a-17c6453396a1",
+@leadops/api:dev:   "NEW",
+@leadops/api:dev:   "CONTACTED",
+@leadops/api:dev:   "QUALIFIED",
+@leadops/api:dev:   "PENDING",
+@leadops/api:dev:   0
+@leadops/api:dev: ]
+@leadops/api:dev: [duration] 3ms
+@leadops/api:dev: [target] quaint::connector::metrics
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM   DEBUG [PrismaService] [prisma:query] SELECT COUNT(*) AS "_count$_all", "public"."leads"."stage_key", "public"."leads"."status"::text FROM "public"."leads" WHERE "public"."leads"."tenant_id" = $1 GROUP BY "public"."leads"."stage_key", "public"."leads"."status" OFFSET $2
+@leadops/api:dev: [params] [
+@leadops/api:dev:   "d3b4d352-9cb6-4aaf-956a-17c6453396a1",
+@leadops/api:dev:   0
+@leadops/api:dev: ]
+@leadops/api:dev: [duration] 4ms
+@leadops/api:dev: [target] quaint::connector::metrics
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM   DEBUG [PrismaService] [prisma:query] SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."follow_ups"."id" FROM "public"."follow_ups" WHERE ("public"."follow_ups"."tenant_id" = $1 AND "public"."follow_ups"."done" = $2 AND "public"."follow_ups"."scheduled_at" < $3) OFFSET $4) AS "sub"
+@leadops/api:dev: [params] [
+@leadops/api:dev:   "d3b4d352-9cb6-4aaf-956a-17c6453396a1",
+@leadops/api:dev:   false,
+@leadops/api:dev:   "2026-03-15 05:38:00.651 UTC",
+@leadops/api:dev:   0
+@leadops/api:dev: ]
+@leadops/api:dev: [duration] 4ms
+@leadops/api:dev: [target] quaint::connector::metrics
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM   DEBUG [PrismaService] [prisma:query] SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."follow_ups"."id" FROM "public"."follow_ups" WHERE ("public"."follow_ups"."tenant_id" = $1 AND "public"."follow_ups"."done" = $2) OFFSET $3) AS "sub"
+@leadops/api:dev: [params] [
+@leadops/api:dev:   "d3b4d352-9cb6-4aaf-956a-17c6453396a1",
+@leadops/api:dev:   false,
+@leadops/api:dev:   0
+@leadops/api:dev: ]
+@leadops/api:dev: [duration] 4ms
+@leadops/api:dev: [target] quaint::connector::metrics
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM   DEBUG [PrismaService] [prisma:query] SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."follow_ups"."id" FROM "public"."follow_ups" WHERE ("public"."follow_ups"."tenant_id" = $1 AND "public"."follow_ups"."done" = $2 AND "public"."follow_ups"."scheduled_at" < $3 AND "public"."follow_ups"."escalated_at" IS NULL AND "public"."follow_ups"."second_escalated_at" IS NULL) OFFSET $4) AS "sub"
+@leadops/api:dev: [params] [
+@leadops/api:dev:   "d3b4d352-9cb6-4aaf-956a-17c6453396a1",
+@leadops/api:dev:   false,
+@leadops/api:dev:   "2026-03-14 18:30:00 UTC",
+@leadops/api:dev:   0
+@leadops/api:dev: ]
+@leadops/api:dev: [duration] 4ms
+@leadops/api:dev: [target] quaint::connector::metrics
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM   DEBUG [PrismaService] [prisma:query] SELECT "public"."leads"."id", "public"."leads"."created_at" FROM "public"."leads" WHERE ("public"."leads"."tenant_id" = $1 AND "public"."leads"."created_at" >= $2 AND "public"."leads"."created_at" <= $3) OFFSET $4
+@leadops/api:dev: [params] [
+@leadops/api:dev:   "d3b4d352-9cb6-4aaf-956a-17c6453396a1",
+@leadops/api:dev:   "2026-03-01 18:30:00 UTC",
+@leadops/api:dev:   "2026-03-15 18:29:59.999 UTC",
+@leadops/api:dev:   0
+@leadops/api:dev: ]
+@leadops/api:dev: [duration] 5ms
+@leadops/api:dev: [target] quaint::connector::metrics
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM   DEBUG [PrismaService] [prisma:query] SELECT "public"."leads"."id", "public"."leads"."updated_at" FROM "public"."leads" WHERE ("public"."leads"."tenant_id" = $1 AND "public"."leads"."stage_key" IN ($2) AND "public"."leads"."updated_at" >= $3 AND "public"."leads"."updated_at" <= $4) OFFSET $5
+@leadops/api:dev: [params] [
+@leadops/api:dev:   "d3b4d352-9cb6-4aaf-956a-17c6453396a1",
+@leadops/api:dev:   "BOOKING_CONFIRMED",
+@leadops/api:dev:   "2026-03-01 18:30:00 UTC",
+@leadops/api:dev:   "2026-03-15 18:29:59.999 UTC",
+@leadops/api:dev:   0
+@leadops/api:dev: ]
+@leadops/api:dev: [duration] 4ms
+@leadops/api:dev: [target] quaint::connector::metrics
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM   DEBUG [PrismaService] [prisma:query] SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."leads"."id" FROM "public"."leads" WHERE ("public"."leads"."tenant_id" = $1 AND "public"."leads"."status" = CAST($2::text AS "public"."LeadStatus")) OFFSET $3) AS "sub"
+@leadops/api:dev: [params] [
+@leadops/api:dev:   "d3b4d352-9cb6-4aaf-956a-17c6453396a1",
+@leadops/api:dev:   "NEW",
+@leadops/api:dev:   0
+@leadops/api:dev: ]
+@leadops/api:dev: [duration] 5ms
+@leadops/api:dev: [target] quaint::connector::metrics
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM   DEBUG [PrismaService] [prisma:query] SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."follow_ups"."id" FROM "public"."follow_ups" WHERE ("public"."follow_ups"."tenant_id" = $1 AND "public"."follow_ups"."done" = $2 AND ("public"."follow_ups"."escalated_at" IS NOT NULL OR "public"."follow_ups"."second_escalated_at" IS NOT NULL)) OFFSET $3) AS "sub"
+@leadops/api:dev: [params] [
+@leadops/api:dev:   "d3b4d352-9cb6-4aaf-956a-17c6453396a1",
+@leadops/api:dev:   false,
+@leadops/api:dev:   0
+@leadops/api:dev: ]
+@leadops/api:dev: [duration] 4ms
+@leadops/api:dev: [target] quaint::connector::metrics
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM   DEBUG [PrismaService] [prisma:query] SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."leads"."id" FROM "public"."leads" WHERE ("public"."leads"."tenant_id" = $1 AND "public"."leads"."status" = CAST($2::text AS "public"."LeadStatus")) OFFSET $3) AS "sub"
+@leadops/api:dev: [params] [
+@leadops/api:dev:   "d3b4d352-9cb6-4aaf-956a-17c6453396a1",
+@leadops/api:dev:   "PENDING",
+@leadops/api:dev:   0
+@leadops/api:dev: ]
+@leadops/api:dev: [duration] 5ms
+@leadops/api:dev: [target] quaint::connector::metrics
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM   DEBUG [PrismaService] [prisma:query] SELECT "public"."follow_ups"."id", "public"."follow_ups"."lead_id" FROM "public"."follow_ups" WHERE ("public"."follow_ups"."tenant_id" = $1 AND "public"."follow_ups"."done" = $2) OFFSET $3
+@leadops/api:dev: [params] [
+@leadops/api:dev:   "d3b4d352-9cb6-4aaf-956a-17c6453396a1",
+@leadops/api:dev:   false,
+@leadops/api:dev:   0
+@leadops/api:dev: ]
+@leadops/api:dev: [duration] 4ms
+@leadops/api:dev: [target] quaint::connector::metrics
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM   DEBUG [PrismaService] [prisma:query] SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."follow_ups"."id" FROM "public"."follow_ups" WHERE ("public"."follow_ups"."tenant_id" = $1 AND "public"."follow_ups"."done" = $2 AND "public"."follow_ups"."done_at" >= $3 AND "public"."follow_ups"."done_at" <= $4) OFFSET $5) AS "sub"
+@leadops/api:dev: [params] [
+@leadops/api:dev:   "d3b4d352-9cb6-4aaf-956a-17c6453396a1",
+@leadops/api:dev:   true,
+@leadops/api:dev:   "2026-03-14 18:30:00 UTC",
+@leadops/api:dev:   "2026-03-15 18:29:59.999 UTC",
+@leadops/api:dev:   0
+@leadops/api:dev: ]
+@leadops/api:dev: [duration] 4ms
+@leadops/api:dev: [target] quaint::connector::metrics
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM   DEBUG [PrismaService] [prisma:query] SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."leads"."id" FROM "public"."leads" WHERE ("public"."leads"."tenant_id" = $1 AND "public"."leads"."status" = CAST($2::text AS "public"."LeadStatus")) OFFSET $3) AS "sub"
+@leadops/api:dev: [params] [
+@leadops/api:dev:   "d3b4d352-9cb6-4aaf-956a-17c6453396a1",
+@leadops/api:dev:   "WON",
+@leadops/api:dev:   0
+@leadops/api:dev: ]
+@leadops/api:dev: [duration] 4ms
+@leadops/api:dev: [target] quaint::connector::metrics
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM   DEBUG [PrismaService] [prisma:query] SELECT "public"."follow_ups"."id", "public"."follow_ups"."done_at" FROM "public"."follow_ups" WHERE ("public"."follow_ups"."tenant_id" = $1 AND "public"."follow_ups"."done" = $2 AND "public"."follow_ups"."done_at" >= $3 AND "public"."follow_ups"."done_at" <= $4) OFFSET $5
+@leadops/api:dev: [params] [
+@leadops/api:dev:   "d3b4d352-9cb6-4aaf-956a-17c6453396a1",
+@leadops/api:dev:   true,
+@leadops/api:dev:   "2026-03-01 18:30:00 UTC",
+@leadops/api:dev:   "2026-03-15 18:29:59.999 UTC",
+@leadops/api:dev:   0
+@leadops/api:dev: ]
+@leadops/api:dev: [duration] 5ms
+@leadops/api:dev: [target] quaint::connector::metrics
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM   DEBUG [PrismaService] [prisma:query] SELECT "public"."leads"."id", "public"."leads"."tenant_id", "public"."leads"."owner_id", "public"."leads"."branch_id", "public"."leads"."stage_key", "public"."leads"."name", "public"."leads"."phone", "public"."leads"."email", "public"."leads"."source", "public"."leads"."intake_data", "public"."leads"."status"::text, "public"."leads"."next_follow_up_at", "public"."leads"."created_at", "public"."leads"."updated_at" FROM "public"."leads" WHERE "public"."leads"."tenant_id" = $1 ORDER BY "public"."leads"."id" ASC LIMIT $2 OFFSET $3
+@leadops/api:dev: [params] [
+@leadops/api:dev:   "d3b4d352-9cb6-4aaf-956a-17c6453396a1",
+@leadops/api:dev:   100,
+@leadops/api:dev:   0
+@leadops/api:dev: ]
+@leadops/api:dev: [duration] 4ms
+@leadops/api:dev: [target] quaint::connector::metrics
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM   DEBUG [PrismaService] [prisma:query] SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."follow_ups"."id" FROM "public"."follow_ups" WHERE ("public"."follow_ups"."tenant_id" = $1 AND "public"."follow_ups"."done" = $2 AND "public"."follow_ups"."scheduled_at" >= $3 AND "public"."follow_ups"."scheduled_at" <= $4 AND "public"."follow_ups"."escalated_at" IS NULL AND "public"."follow_ups"."second_escalated_at" IS NULL) OFFSET $5) AS "sub"
+@leadops/api:dev: [params] [
+@leadops/api:dev:   "d3b4d352-9cb6-4aaf-956a-17c6453396a1",
+@leadops/api:dev:   false,
+@leadops/api:dev:   "2026-03-14 18:30:00 UTC",
+@leadops/api:dev:   "2026-03-15 18:29:59.999 UTC",
+@leadops/api:dev:   0
+@leadops/api:dev: ]
+@leadops/api:dev: [duration] 5ms
+@leadops/api:dev: [target] quaint::connector::metrics
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM   DEBUG [PrismaService] [prisma:query] SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."leads"."id" FROM "public"."leads" WHERE ("public"."leads"."tenant_id" = $1 AND "public"."leads"."created_at" >= $2 AND "public"."leads"."created_at" <= $3) OFFSET $4) AS "sub"
+@leadops/api:dev: [params] [
+@leadops/api:dev:   "d3b4d352-9cb6-4aaf-956a-17c6453396a1",
+@leadops/api:dev:   "2026-03-14 18:30:00 UTC",
+@leadops/api:dev:   "2026-03-15 18:29:59.999 UTC",
+@leadops/api:dev:   0
+@leadops/api:dev: ]
+@leadops/api:dev: [duration] 2ms
+@leadops/api:dev: [target] quaint::connector::metrics
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM   DEBUG [PrismaService] [prisma:query] SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."follow_ups"."id" FROM "public"."follow_ups" WHERE ("public"."follow_ups"."tenant_id" = $1 AND "public"."follow_ups"."done" = $2 AND "public"."follow_ups"."kind" = $3 AND "public"."follow_ups"."scheduled_at" <= $4) OFFSET $5) AS "sub"
+@leadops/api:dev: [params] [
+@leadops/api:dev:   "d3b4d352-9cb6-4aaf-956a-17c6453396a1",
+@leadops/api:dev:   false,
+@leadops/api:dev:   "POST_REPORT",
+@leadops/api:dev:   "2026-03-15 18:29:59.999 UTC",
+@leadops/api:dev:   0
+@leadops/api:dev: ]
+@leadops/api:dev: [duration] 1ms
+@leadops/api:dev: [target] quaint::connector::metrics
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM   DEBUG [PrismaService] [prisma:query] SELECT COUNT(*) AS "_count$_all" FROM (SELECT "public"."leads"."id" FROM "public"."leads" WHERE ("public"."leads"."tenant_id" = $1 AND "public"."leads"."stage_key" IN ($2) AND "public"."leads"."updated_at" >= $3 AND "public"."leads"."updated_at" <= $4) OFFSET $5) AS "sub"
+@leadops/api:dev: [params] [
+@leadops/api:dev:   "d3b4d352-9cb6-4aaf-956a-17c6453396a1",
+@leadops/api:dev:   "BOOKING_CONFIRMED",
+@leadops/api:dev:   "2026-03-14 18:30:00 UTC",
+@leadops/api:dev:   "2026-03-15 18:29:59.999 UTC",
+@leadops/api:dev:   0
+@leadops/api:dev: ]
+@leadops/api:dev: [duration] 1ms
+@leadops/api:dev: [target] quaint::connector::metrics
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM   DEBUG [PrismaService] [prisma:query] SELECT "public"."leads"."id", "public"."leads"."branch_id" FROM "public"."leads" WHERE "public"."leads"."id" IN ($1,$2,$3) OFFSET $4
+@leadops/api:dev: [params] [
+@leadops/api:dev:   "9896ba2d-bd8d-42b3-90d5-f42110b36bbf",
+@leadops/api:dev:   "0e3e42ad-3e3b-4188-86bc-10358bfea3c2",
+@leadops/api:dev:   "774ce362-e4e1-47e9-8b0e-76fb6f3064c0",
+@leadops/api:dev:   0
+@leadops/api:dev: ]
+@leadops/api:dev: [duration] 2ms
+@leadops/api:dev: [target] quaint::connector::metrics
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM   DEBUG [PrismaService] [prisma:query] SELECT "public"."follow_ups"."id", "public"."follow_ups"."created_at", "public"."follow_ups"."lead_id" FROM "public"."follow_ups" WHERE "public"."follow_ups"."lead_id" IN ($1,$2,$3) ORDER BY "public"."follow_ups"."created_at" ASC OFFSET $4
+@leadops/api:dev: [params] [
+@leadops/api:dev:   "0e3e42ad-3e3b-4188-86bc-10358bfea3c2",
+@leadops/api:dev:   "774ce362-e4e1-47e9-8b0e-76fb6f3064c0",
+@leadops/api:dev:   "9896ba2d-bd8d-42b3-90d5-f42110b36bbf",
+@leadops/api:dev:   0
+@leadops/api:dev: ]
+@leadops/api:dev: [duration] 3ms
+@leadops/api:dev: [target] quaint::connector::metrics
+@leadops/api:dev: [Nest] 9811  - 03/15/2026, 11:08:00 AM     LOG [RequestLoggingInterceptor] {"event":"http.request","method":"GET","path":"/v1/dashboard/stats","durationMs":18,"params":{},"query":{}}
+@leadops/api:dev: {"level":30,"time":1773553080668,"pid":9811,"hostname":"Ahmads-MacBook-Air.local","reqId":"req-k","res":{"statusCode":200},"responseTime":21.682958126068115,"msg":"request completed"}
+

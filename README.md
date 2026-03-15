@@ -40,6 +40,9 @@ pnpm db:generate
 pnpm db:migrate
 pnpm db:seed
 
+# 4b) Bootstrap RBAC baseline (required for existing/non-seeded DBs)
+pnpm rbac:bootstrap
+
 # 5) Choose tenant resolution mode in apps/api/.env
 # Option A (single tenant): DEPLOYMENT_MODE=single + SINGLE_TENANT_ID=<tenant-id>
 # Option B (shared SaaS): DEPLOYMENT_MODE=multi
@@ -90,6 +93,8 @@ Sign in as `admin@local.test` (superadmin) to:
 - `pnpm lint`: lint all packages
 - `pnpm typecheck`: typecheck all packages
 - `pnpm test`: run package tests
+- `pnpm rbac:bootstrap`: provision permission catalog + default tenant role templates (API)
+  - Optional: `TENANT_ID=<uuid> pnpm rbac:bootstrap` to bootstrap a single tenant
 - `pnpm db:generate`: Prisma generate (API)
 - `pnpm db:migrate`: Prisma migrate dev (API)
 - `pnpm db:seed`: seed local data (API)
@@ -114,3 +119,5 @@ Sign in as `admin@local.test` (superadmin) to:
 - WhatsApp inbound/outbound adapters remain scaffolded in v1; public webhook is not exposed yet.
 - Tenant reminder/business-window settings are editable via `PATCH /v1/settings` for tenant admin or superadmin with `settings.manage`.
 - Ingestion examples (`curl` + script patterns) are in `docs/INGESTIONS.md`.
+- API startup now validates RBAC baseline (`permissions` catalog + required tenant system roles) and exits on missing baseline. Use `pnpm rbac:bootstrap` before startup when needed.
+- Tenant config is now strict/pre-provisioned; read paths no longer auto-create or auto-upsert `tenant_configs`.

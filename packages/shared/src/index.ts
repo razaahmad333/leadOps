@@ -38,13 +38,21 @@ export {
 export {
   REMINDER_QUEUE,
   REPORT_QUEUE,
+  ANALYTICS_QUEUE,
   FOLLOWUP_NOTIFICATION_JOB_KINDS,
   FOLLOWUP_NOTIFICATION_JOB_NAMES,
+  DASHBOARD_ANALYTICS_JOB_KINDS,
+  DASHBOARD_ANALYTICS_JOB_NAMES,
   type DailyReportJob,
   type FollowupNotificationJob,
   type FollowupNotificationJobKind,
   type FollowupNotificationJobName,
   type FollowupReminderJob,
+  type DashboardAnalyticsJob,
+  type DashboardAnalyticsJobKind,
+  type DashboardAnalyticsJobName,
+  type DashboardRefreshBranchJob,
+  type DashboardRebuildTenantJob,
 } from './queue';
 
 export {
