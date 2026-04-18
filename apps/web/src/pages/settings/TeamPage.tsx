@@ -442,7 +442,7 @@ export function TeamPage(): React.JSX.Element {
             <CardTitle>Directory</CardTitle>
             <CardDescription>Search, filter, and update team access without leaving the workspace.</CardDescription>
           </div>
-          <div className="grid w-full gap-3 sm:grid-cols-2 lg:w-auto lg:grid-cols-3">
+          <div className="grid w-full gap-3 sm:grid-cols-2 lg:w-auto lg:grid-cols-2">
             <Input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
@@ -501,13 +501,13 @@ export function TeamPage(): React.JSX.Element {
 
                         <div className="mt-3 flex flex-wrap gap-2">
                           {user.roleNames.map((roleName) => (
-                            <Badge key={roleName} variant="secondary">
+                            <Badge key={roleName} variant="secondary" className="whitespace-nowrap">
                               {roleName}
                             </Badge>
                           ))}
                           {user.isTenantAdmin ? (
-                            <Badge variant="default" className="gap-1">
-                              <Shield className="h-3 w-3" />
+                            <Badge variant="default" className="gap-1 whitespace-nowrap leading-none">
+                              <Shield className="h-3 w-3 shrink-0" />
                               Full access
                             </Badge>
                           ) : null}
@@ -568,7 +568,7 @@ export function TeamPage(): React.JSX.Element {
                             <TableCell>
                               <div className="flex flex-wrap gap-2">
                                 {user.roleNames.map((roleName) => (
-                                  <Badge key={roleName} variant="secondary">
+                                  <Badge key={roleName} variant="secondary" className="whitespace-nowrap">
                                     {roleName}
                                   </Badge>
                                 ))}
@@ -576,8 +576,8 @@ export function TeamPage(): React.JSX.Element {
                             </TableCell>
                             <TableCell>
                               {user.isTenantAdmin ? (
-                                <Badge variant="default" className="gap-1">
-                                  <Shield className="h-3 w-3" />
+                                <Badge variant="default" className="gap-1 whitespace-nowrap leading-none">
+                                  <Shield className="h-3 w-3 shrink-0" />
                                   Full access
                                 </Badge>
                               ) : (
@@ -772,7 +772,7 @@ export function TeamPage(): React.JSX.Element {
       </Dialog>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-h-[92vh] overflow-y-auto" preventImplicitClose>
+        <DialogContent preventImplicitClose>
           <DialogHeader>
             <DialogTitle>{editingUser ? 'Edit User' : 'Create User'}</DialogTitle>
             <DialogDescription>

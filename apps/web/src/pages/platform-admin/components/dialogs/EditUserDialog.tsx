@@ -57,7 +57,7 @@ export function EditUserDialog(props: EditUserDialogProps): React.JSX.Element {
         }
       }}
     >
-      <DialogContent className="max-h-[92vh] overflow-y-auto" preventImplicitClose>
+      <DialogContent preventImplicitClose>
         <DialogHeader>
           <DialogTitle>Edit User Info</DialogTitle>
           <DialogDescription>

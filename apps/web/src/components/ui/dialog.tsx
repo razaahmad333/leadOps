@@ -31,7 +31,7 @@ const DialogContent = React.forwardRef<
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
-        'fixed left-1/2 top-1/2 z-50 grid max-h-[92vh] w-[calc(100%-2rem)] max-w-2xl -translate-x-1/2 -translate-y-1/2 gap-4 overflow-y-auto rounded-[1.75rem] border bg-background p-5 shadow-2xl sm:p-6',
+        'fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-2xl -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-[1.75rem] border bg-background p-5 shadow-2xl sm:p-6',
         className,
       )}
       onEscapeKeyDown={(event) => {
@@ -54,7 +54,11 @@ const DialogContent = React.forwardRef<
       }}
       {...props}
     >
-      {children}
+      <div className="max-h-[calc(92vh-2.5rem)] overflow-y-auto overflow-x-visible px-1 dialog-scroll">
+        <div className="grid gap-4">
+          {children}
+        </div>
+      </div>
       <DialogClose className="absolute right-4 top-4 rounded-full p-1 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground">
         <X className="h-4 w-4" />
         <span className="sr-only">Close</span>

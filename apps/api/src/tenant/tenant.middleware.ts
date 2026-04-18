@@ -6,6 +6,12 @@ import { tenantStorage } from './tenant.store';
 @Injectable()
 export class TenantMiddleware implements NestMiddleware {
   private readonly logger = new Logger(TenantMiddleware.name);
+  private readonly reservedSubdomains = new Set(
+    (process.env.RESERVED_SUBDOMAINS ?? 'www,api,app')
+      .split(',')
+      .map((value) => value.trim().toLowerCase())
+      .filter((value) => value.length > 0),
+  );
 
   constructor(private readonly prisma: PrismaService) {}
 
@@ -71,7 +77,7 @@ export class TenantMiddleware implements NestMiddleware {
       const host = (req.headers['host'] ?? '') as string;
       const subdomain = this.extractSubdomain(host);
 
-      if (subdomain) {
+      if (subdomain && !this.reservedSubdomains.has(subdomain)) {
         explicitTenantSignal = true;
         tenant = await this.prisma.tenant.findUnique({ where: { slug: subdomain } });
       }

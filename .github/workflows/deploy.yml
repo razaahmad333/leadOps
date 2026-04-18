@@ -1,8 +1,9 @@
-name: Build and Push Images
+name: Push Images
 
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -12,6 +13,7 @@ env:
   REGISTRY: ghcr.io
   IMAGE_API: ghcr.io/${{ github.repository }}-api
   IMAGE_WORKER: ghcr.io/${{ github.repository }}-worker
+  PLATFORM: linux/amd64
 
 jobs:
   build-and-push:
@@ -31,22 +33,28 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Compute short SHA
+        id: vars
+        run: echo "short_sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
       - name: Build and push API image
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./apps/api/Dockerfile
+          platforms: ${{ env.PLATFORM }}
           push: true
           tags: |
             ${{ env.IMAGE_API }}:latest
-            ${{ env.IMAGE_API }}:${{ github.sha }}
+            ${{ env.IMAGE_API }}:${{ steps.vars.outputs.short_sha }}
 
       - name: Build and push Worker image
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./apps/worker/Dockerfile
+          platforms: ${{ env.PLATFORM }}
           push: true
           tags: |
             ${{ env.IMAGE_WORKER }}:latest
-            ${{ env.IMAGE_WORKER }}:${{ github.sha }}
+            ${{ env.IMAGE_WORKER }}:${{ steps.vars.outputs.short_sha }}

@@ -58,7 +58,7 @@ export function RoleDialog(props: RoleDialogProps): React.JSX.Element {
         }
       }}
     >
-      <DialogContent className="max-h-[92vh] overflow-y-auto" preventImplicitClose>
+      <DialogContent className="max-w-5xl" preventImplicitClose>
         <DialogHeader>
           <DialogTitle>{editingRole ? 'Edit Role' : 'Create Role'}</DialogTitle>
           <DialogDescription>
