@@ -1,0 +1,13 @@
+node_modules
+.git
+.gitignore
+dist
+coverage
+.next
+.vite
+.env
+.env.*
+npm-debug.log
+pnpm-debug.log
+Dockerfile*
+docker-compose*
